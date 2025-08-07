@@ -22,4 +22,12 @@ Boonty is an easy to use gamification platform to engage your customers. Increas
 
 ## API project
 
-Coming soon
+### Staging
+
+[![Tests Suite](https://github.com/boonty-io/loyalty-payment-api/actions/workflows/test.yml/badge.svg?branch=staging)](https://github.com/boonty-io/loyalty-payment-api/actions/workflows/test.yml)
+[![Dependabot Updates](https://github.com/boonty-io/loyalty-payment-api/actions/workflows/dependabot/dependabot-updates/badge.svg?branch=staging)](https://github.com/boonty-io/loyalty-payment-api/actions/workflows/dependabot/dependabot-updates)
+
+### Production
+
+[![Tests Suite](https://github.com/boonty-io/loyalty-payment-api/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/boonty-io/loyalty-payment-api/actions/workflows/test.yml)
+[![Dependabot Updates](https://github.com/boonty-io/loyalty-payment-api/actions/workflows/dependabot/dependabot-updates/badge.svg?branch=main)](https://github.com/boonty-io/loyalty-payment-api/actions/workflows/dependabot/dependabot-updates)
