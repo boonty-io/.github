@@ -34,10 +34,12 @@ Boonty is an easy to use gamification platform to engage your customers. Increas
 
 ## POS Project
 
-### Staging
+### React Native version
+
+#### Staging
 
 [![CI](https://github.com/boonty-io/boonty-pos-app/actions/workflows/ci.yml/badge.svg?branch=staging)](https://github.com/boonty-io/boonty-pos-app/actions/workflows/ci.yml)
 
-### Production
+#### Production
 
 [![CI](https://github.com/boonty-io/boonty-pos-app/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/boonty-io/boonty-pos-app/actions/workflows/ci.yml)
