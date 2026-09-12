@@ -1,0 +1,64 @@
+# ci-status — post a suite's verdict as a commit status on the commit under test.
+#
+# Why a status and not the job's own check run: a workflow started by
+# `workflow_dispatch` (which is how ci-request.yml runs the suites) creates
+# check runs on the commit, but GitHub's pull-request rollup — the merge box
+# and `gh pr checks` — lists only suites started by pull_request/push/
+# merge_group events. Measured on api-webapp#1529: 11 check suites on the
+# head commit, 5 in the rollup. A commit status is event-agnostic: it shows
+# in the rollup, a ruleset can require it, and the merge queue accepts it.
+#
+# Use it as the LAST step of the workflow's verdict job with `if: always()`,
+# so the status mirrors the verdict: `success` only when every step before
+# it passed, `failure` otherwise. The job needs `permissions: statuses: write`.
+# No status is posted when the workflow never runs — the context stays
+# `expected`, which is the honest "not run yet".
+name: ci-status
+description: Post the suite verdict as a commit status on the commit under test
+
+inputs:
+  context:
+    description: Status context, e.g. `ci/tests`. Rulesets require this name.
+    required: true
+  job-status:
+    description: Pass `${{ job.status }}` from the verdict job.
+    required: true
+  head-sha:
+    description: The sha the run was requested for (`inputs.head_sha`). When set and different from the commit that actually ran, the status is `failure` — the branch moved, request again.
+    required: false
+    default: ''
+  description:
+    description: Short text shown next to the status.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Post ${{ inputs.context }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CONTEXT: ${{ inputs.context }}
+        JOB_STATUS: ${{ inputs.job-status }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        DESCRIPTION: ${{ inputs.description }}
+      run: |
+        set -euo pipefail
+        sha="$GITHUB_SHA"
+        state=failure
+        desc="$DESCRIPTION"
+        if [ -n "$HEAD_SHA" ] && [ "$HEAD_SHA" != "$sha" ]; then
+          desc="requested for ${HEAD_SHA:0:7} but ran on ${sha:0:7} — the branch moved, request again"
+        elif [ "$JOB_STATUS" = "success" ]; then
+          state=success
+          desc="${desc:-passed} (${GITHUB_EVENT_NAME})"
+        else
+          desc="${desc:-verdict job ended ${JOB_STATUS}} (${GITHUB_EVENT_NAME})"
+        fi
+        gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
+          -f "state=${state}" \
+          -f "context=${CONTEXT}" \
+          -f "description=${desc:0:140}" \
+          -f "target_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+          --jq '"\(.context) → \(.state) on \(.url | split("/") | last | .[0:7])"'

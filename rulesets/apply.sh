@@ -2,7 +2,7 @@
 # Apply the on-demand-ci ruleset to one repository, merging that repo's own
 # suite contexts into the required checks. Needs repo admin.
 #
-#   rulesets/apply.sh boonty-io/api-webapp "lint,format,typecheck,build,unit,integration,e2e (1),…,tests-complete,verify"
+#   rulesets/apply.sh boonty-io/api-webapp "ci/tests,ci/build,ci/verify"
 #
 # Idempotent: updates the ruleset named `on-demand-ci` when it exists.
 # It does NOT delete the repo's existing "Protected branches" ruleset —

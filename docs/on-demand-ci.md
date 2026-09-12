@@ -36,6 +36,36 @@ contexts stay `expected` on the sha until a real request runs them, which
 is exactly the visible "not ready" signal. Commit statuses and check runs
 are per sha, so any push after a green run voids it without extra logic.
 
+## Reporting the verdict: a commit status, not the check run
+
+A run started by `workflow_dispatch` creates check runs on the commit, but
+GitHub's pull-request rollup — the merge box, `gh pr checks`, and what a
+ruleset evaluates — lists only suites started by `pull_request`, `push` or
+`merge_group`. Measured on api-webapp#1529: 11 check suites on the head
+commit, 5 in the rollup. So each suite's verdict job ends with the shared
+`ci-status` action, which posts a commit status (`ci/tests`, `ci/build`,
+`ci/verify`) that the rollup does show and a ruleset can require:
+
+```yaml
+  tests-complete:
+    permissions:
+      statuses: write
+    steps:
+      - name: Verdict
+        run: …            # exits 1 when a required suite did not pass
+      - if: always()
+        uses: boonty-io/.github/.github/actions/ci-status@main
+        with:
+          context: ci/tests
+          job-status: ${{ job.status }}
+          head-sha: ${{ inputs.head_sha }}
+```
+
+The status is `success` only when every step before it passed. When the
+workflow never runs, nothing is posted and the context stays `expected`.
+When the branch moved between the request and the run, the status is
+`failure` with "request again".
+
 ## What a suite workflow must declare
 
 ```yaml
@@ -69,7 +99,7 @@ so a runner-specific failure can be reproduced on the other pool.
 ## Making it enforceable
 
 Rulesets on `staging` and `main` (payload in `rulesets/`) require the suite
-contexts, the four `gates/*` commit statuses posted by the ai-config gate
+status contexts (`ci/tests`, `ci/build`, `ci/verify`), the four `gates/*` commit statuses posted by the ai-config gate
 runner, one approving review, resolved conversations, an up-to-date branch,
 and the merge queue. Draft PRs are unmergeable already. `gh pr ready` is
 refused by the ai-config PreToolUse hook until every required context is
