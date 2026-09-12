@@ -21,7 +21,7 @@ inputs:
     description: Status context, e.g. `ci/tests`. Rulesets require this name.
     required: true
   job-status:
-    description: Pass `${{ job.status }}` from the verdict job.
+    description: The verdict job's own status — pass the `job.status` context. (Written without the expression braces on purpose — GitHub evaluates expressions inside action metadata descriptions.)
     required: true
   head-sha:
     description: The sha the run was requested for (`inputs.head_sha`). When set and different from the commit that actually ran, the status is `failure` — the branch moved, request again.
