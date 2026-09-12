@@ -81,7 +81,11 @@ on:
 
 Inside the suite: the `changes` job (dorny/paths-filter) passes
 `base: ${{ inputs.base }}` on `workflow_dispatch` and needs `fetch-depth: 0`
-there; `merge_group` is supported natively. Heavy jobs use
+there; `merge_group` is supported natively. **Before** paths-filter, a
+`verify-request` step resolves the PR (`gh pr view`) and fails the job when
+its base is not `inputs.base` or its head is not the commit checked out —
+otherwise anyone with write access could dispatch the suite by hand with
+`base=<head sha>`, get an empty diff, and certify a code commit as docs-only. Heavy jobs use
 `runs-on: ${{ inputs.runner == 'github' && 'ubuntu-latest' || '<blacksmith label>' }}`
 so a runner-specific failure can be reproduced on the other pool.
 

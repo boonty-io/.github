@@ -47,6 +47,14 @@ expect issue_comment comment-cix.json 'go=false'
 expect push labeled-ci-run.json 'go=false'
 # 13. an unreadable payload → nothing, and exit 0
 expect pull_request does-not-exist.json 'go=false'
+# 14. a label name carrying a newline cannot start a second output line
+n=$((n + 1))
+out="$(GITHUB_EVENT_NAME=pull_request "$decide" "$here/fixtures/labeled-newline.json")"
+if [ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" = "2" ] && printf '%s\n' "$out" | grep -q '^reason=label .ci:run$' ; then
+  echo "✓ [pull_request/labeled-newline.json] reason is one line"
+else
+  echo "✗ [pull_request/labeled-newline.json] expected exactly two output lines with the newline stripped, got:"; printf '%s\n' "$out" | sed 's/^/    /'; fail=$((fail + 1))
+fi
 
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]

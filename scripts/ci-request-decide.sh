@@ -34,7 +34,9 @@ fi
 
 no() {
   echo "go=false"
-  echo "reason=$1"
+  # The reason quotes payload values (a label name, an association); strip
+  # anything that could start a new `key=value` line in $GITHUB_OUTPUT.
+  printf 'reason=%s\n' "$(printf '%s' "$1" | tr -d '\r\n')"
   exit 0
 }
 
