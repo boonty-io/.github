@@ -1,0 +1,45 @@
+# CI for this repository (public — GitHub-hosted runners are free here).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install actionlint (checksum-verified against the release manifest)
+        run: |
+          set -euo pipefail
+          v=1.7.12
+          base="https://github.com/rhysd/actionlint/releases/download/v${v}"
+          curl -fsSL -o "actionlint_${v}_linux_amd64.tar.gz" "${base}/actionlint_${v}_linux_amd64.tar.gz"
+          curl -fsSL -o checksums.txt "${base}/actionlint_${v}_checksums.txt"
+          sha256sum --check --ignore-missing checksums.txt
+          tar -xzf "actionlint_${v}_linux_amd64.tar.gz" actionlint
+      - name: Lint every workflow, including the reusable ones
+        run: ./actionlint -color -shellcheck= -pyflakes=
+
+  decide-script:
+    name: ci-request decision fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - run: test/ci-request-decide.test.sh

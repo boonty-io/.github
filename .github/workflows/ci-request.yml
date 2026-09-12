@@ -1,0 +1,164 @@
+# ci-request — the single entry point for on-demand CI on a pull request.
+#
+# Reusable (`workflow_call`). A consumer repo calls it from a ~20-line
+# `.github/workflows/ci-request.yml` on two events:
+#
+#   pull_request / labeled   — the `ci:run` label (applied by Claude once the
+#                              four review gates pass, or by a human)
+#   issue_comment / created  — `/ci` (or `/ci tests.yml,ci.yml`) from an
+#                              OWNER, MEMBER or COLLABORATOR
+#
+# On a request it resolves the PR head, removes the label so it can be
+# re-applied for the next run, and dispatches each suite workflow named in
+# `workflows` via `workflow_dispatch` on the PR head branch with inputs
+# `pr`, `base`, `head_sha`. The suites themselves stay in the consumer repo;
+# this file only decides *whether* and *what* to run. Check runs attach to
+# the head commit, so the PR shows them like any other.
+#
+# Why dispatch instead of `pull_request: types: [labeled]` on the suites:
+# a suite that fires on `labeled` fires on EVERY label. Its jobs then
+# `if:`-skip, and a skipped required check counts as a pass — so adding
+# `dependencies` would turn the whole suite green without running it. Here a
+# non-request produces no run at all, and the required contexts stay
+# "expected" on the sha until a real request runs them.
+#
+# The decision is `scripts/ci-request-decide.sh` (pure function of the event
+# payload, tested by `test/ci-request-decide.test.sh`).
+name: ci-request
+
+on:
+  workflow_call:
+    inputs:
+      workflows:
+        description: Comma-separated workflow file names to dispatch (e.g. `tests.yml,ci.yml`).
+        required: true
+        type: string
+      label:
+        description: The label that requests CI.
+        required: false
+        default: 'ci:run'
+        type: string
+      command:
+        description: The comment command that requests CI.
+        required: false
+        default: '/ci'
+        type: string
+      shared_ref:
+        description: Ref of boonty-io/.github to take the decision script from. Pin to a branch only while testing that branch.
+        required: false
+        default: main
+        type: string
+    outputs:
+      requested:
+        description: '`true` when the event was a CI request and the suites were dispatched.'
+        value: ${{ jobs.request.outputs.go }}
+      pr:
+        description: The pull request number the request was for.
+        value: ${{ jobs.request.outputs.pr }}
+
+permissions: {}
+
+jobs:
+  request:
+    name: request
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: write        # gh workflow run
+      pull-requests: write  # consume the label
+    outputs:
+      go: ${{ steps.decide.outputs.go }}
+      pr: ${{ steps.decide.outputs.pr }}
+    steps:
+      - name: Check out the decision script
+        uses: actions/checkout@v6
+        with:
+          repository: boonty-io/.github
+          ref: ${{ inputs.shared_ref }}
+          sparse-checkout: scripts/ci-request-decide.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Decide
+        id: decide
+        env:
+          CI_LABEL: ${{ inputs.label }}
+          CI_COMMAND: ${{ inputs.command }}
+        run: |
+          set -euo pipefail
+          scripts/ci-request-decide.sh "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Not a request
+        if: steps.decide.outputs.go != 'true'
+        env:
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: echo "::notice title=ci-request::no CI requested — ${REASON}"
+
+      - name: Resolve the pull request head
+        id: pr
+        if: steps.decide.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.decide.outputs.pr }}
+        run: |
+          set -euo pipefail
+          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
+            --json headRefName,headRefOid,baseRefName,isCrossRepository,state \
+            > pr.json
+          state="$(jq -r .state pr.json)"
+          if [ "$state" != "OPEN" ]; then
+            echo "::error title=ci-request::PR #$PR is $state — nothing to run"
+            exit 1
+          fi
+          if [ "$(jq -r .isCrossRepository pr.json)" = "true" ]; then
+            echo "::error title=ci-request::PR #$PR comes from a fork; workflow_dispatch cannot target a fork ref"
+            exit 1
+          fi
+          {
+            echo "head_ref=$(jq -r .headRefName pr.json)"
+            echo "head_sha=$(jq -r .headRefOid pr.json)"
+            echo "base=$(jq -r .baseRefName pr.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Consume the label
+        if: steps.decide.outputs.go == 'true' && steps.decide.outputs.source == 'label'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.decide.outputs.pr }}
+          LABEL: ${{ inputs.label }}
+        run: gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label "$LABEL"
+
+      - name: Dispatch the suites
+        if: steps.decide.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.decide.outputs.pr }}
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          BASE: ${{ steps.pr.outputs.base }}
+          DEFAULT_WORKFLOWS: ${{ inputs.workflows }}
+          OVERRIDE_WORKFLOWS: ${{ steps.decide.outputs.workflows }}
+        run: |
+          set -euo pipefail
+          list="${OVERRIDE_WORKFLOWS:-$DEFAULT_WORKFLOWS}"
+          if [ -n "$OVERRIDE_WORKFLOWS" ]; then
+            # An override may only name workflows the consumer listed.
+            IFS=',' read -r -a allowed <<< "$DEFAULT_WORKFLOWS"
+            IFS=',' read -r -a wanted <<< "$OVERRIDE_WORKFLOWS"
+            for w in "${wanted[@]}"; do
+              ok=0; for a in "${allowed[@]}"; do [ "$w" = "$a" ] && ok=1; done
+              if [ "$ok" -ne 1 ]; then
+                echo "::error title=ci-request::'$w' is not one of the dispatchable workflows ($DEFAULT_WORKFLOWS)"
+                exit 1
+              fi
+            done
+          fi
+          IFS=',' read -r -a workflows <<< "$list"
+          for wf in "${workflows[@]}"; do
+            [ -n "$wf" ] || continue
+            echo "dispatching $wf on $HEAD_REF ($HEAD_SHA) for PR #$PR (base $BASE)"
+            gh workflow run "$wf" --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF" \
+              -f "pr=$PR" -f "base=$BASE" -f "head_sha=$HEAD_SHA"
+          done
+          echo "::notice title=ci-request::dispatched ${list} on PR #$PR @ ${HEAD_SHA}"
