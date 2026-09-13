@@ -1,0 +1,28 @@
+# On-demand CI entry point — copy into <repo>/.github/workflows/ci-request.yml
+# and list the suite workflows this repo dispatches. Each listed workflow must
+# declare `workflow_dispatch` with inputs `pr`, `base`, `head_sha` (and
+# `merge_group` for the queue). See boonty-io/.github/docs/on-demand-ci.md.
+name: ci-request
+
+on:
+  pull_request:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: ci-request-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  request:
+    # Everything else is the shared workflow's decision.
+    uses: boonty-io/.github/.github/workflows/ci-request.yml@main
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: write
+    with:
+      workflows: tests.yml,ci.yml

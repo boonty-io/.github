@@ -1,0 +1,65 @@
+{
+  "name": "on-demand-ci",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/main",
+        "refs/heads/staging"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "merge_queue",
+      "parameters": {
+        "check_response_timeout_minutes": 60,
+        "grouping_strategy": "ALLGREEN",
+        "max_entries_to_build": 5,
+        "max_entries_to_merge": 5,
+        "merge_method": "MERGE",
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 5
+      }
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "gates/architecture"
+          },
+          {
+            "context": "gates/code-review"
+          },
+          {
+            "context": "gates/security"
+          },
+          {
+            "context": "gates/claim-verifier"
+          }
+        ]
+      }
+    }
+  ]
+}
