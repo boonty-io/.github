@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Every third-party action is pinned to a full commit SHA; a SHA never moves on its own.
+  # This entry keeps those pins from freezing on a version with a known fix available.
+  # Dependabot reads this file from the default branch (main), which is also the
+  # integration branch its PRs target.
+  # `/` covers .github/workflows; composite actions are listed by glob.
+  - package-ecosystem: 'github-actions'
+    directories:
+      - '/'
+      - '/.github/actions/*'
+    target-branch: 'main'
+    schedule:
+      interval: 'weekly'
+    commit-message:
+      prefix: 'ci'
+    groups:
+      github-actions:
+        patterns:
+          - '*'
