@@ -11,26 +11,43 @@ repository implements the request half.
 | --- | --- | --- |
 | push to a feature branch / PR sync | nothing | — |
 | PR labelled `ci:run`, or `/ci` comment by an org member | every suite workflow the repo lists | dispatched on the PR head |
-| PR marked ready for review, or opened as non-draft | every suite, unless this head already has a `ci/*` run | dispatched on the PR head |
-| PR opened as draft, reopened, or pushed to (opt-in, see below) | no suite — a pending "Not run yet" status per required context, saying how to run CI | — |
+| PR marked ready for review, or opened as non-draft (five-type trigger set only) | every suite, unless this head was already dispatched | dispatched on the PR head |
+| PR opened as draft, reopened, or pushed to | no suite — with `ci-hint.yml`, a pending "Not run yet" line per required context | — |
 | `merge_group` | every suite once more before landing | merge queue |
 | push to `staging` / `main` | build / deploy workflows only | — |
 | `workflow_dispatch` | any single suite, by hand | — |
 
 Drafts never run on their own: a PR is marked ready when it is ready to be
-reviewed, and that is when CI runs. Marking a draft ready after its head is
-already green (the AI flow) does not run it twice — the request is skipped
-when the head carries any `ci/*` status other than the hint. Dependabot PRs
-are skipped (read-only token); request them by label or `/ci`.
+reviewed, and that is when CI runs (consumers on the five-type trigger set
+below). Marking a draft ready after its head was already requested (the AI
+flow flips to ready once green) does not run it twice: the request is skipped
+when the head sha already has a `workflow_dispatch` run, finished or not. A
+failed head is not re-run by flipping; request it again. Dependabot and fork
+PRs are skipped (read-only token); request them by label or `/ci`.
 
-### Opt-in: say how to run CI on the PR page
+### Opt-in: make every required line say something (`ci-hint.yml`)
 
-Without it, an unrequested required context reads "Expected — Waiting for
-status to be reported", with nothing to click. A consumer that lists the
-contexts gets a PENDING status per context on every new head instead, whose
-description reads "Not run yet: mark the PR ready, add the ci:run label or
-comment /ci" and links here. A suite overwrites it when it runs; the hint
-never overwrites a status already on the head.
+Without it, an unrequested context and a running one both read "Expected —
+Waiting for status to be reported", with nothing to click: a suite posts its
+`ci/*` status only when it ends. A consumer that opts in gets, per context it
+lists:
+
+- on a new head that is not a request: PENDING "Not run yet: mark the PR
+  ready, add the ci:run label or comment /ci", linking here. It never
+  overwrites a status already on the head;
+- on a full request (label, `/ci`, PR marked ready): PENDING "Requested:
+  running", linking the head branch's dispatched runs, so the line is
+  clickable while the suite runs. It never overwrites a status posted after
+  the request, and on "ready" never a real verdict (nothing is dispatched for
+  a head that already ran). A partial `/ci tests.yml` posts nothing.
+
+The suite's own `ci-status` step replaces the line with the verdict; a pending
+line never satisfies a required check. The per-context rule is
+`scripts/ci-hint-should-post.sh` (tested by `test/ci-hint-should-post.test.sh`).
+
+It is a separate reusable workflow because it needs `statuses: write`: a
+reusable workflow cannot ask for more than its caller grants, so putting it in
+`ci-request.yml` would break every consumer that has not opted in.
 
 ```yaml
 on:
@@ -41,15 +58,20 @@ on:
 jobs:
   request:
     uses: boonty-io/.github/.github/workflows/ci-request.yml@main
-    permissions: { contents: read, actions: write, pull-requests: write, statuses: write }
+    permissions: { contents: read, actions: write, pull-requests: write }
     with:
       workflows: tests.yml,ci.yml
+  hint:
+    uses: boonty-io/.github/.github/workflows/ci-hint.yml@main
+    permissions: { contents: read, pull-requests: read, statuses: write }
+    with:
       contexts: ci/tests,ci/build
 ```
 
-The guard accepts exactly `[labeled]` or that five-type set, and with the
-latter requires `contexts` and `statuses: write`. A consumer still on
-`[labeled]` keeps working unchanged (no auto-run on ready, no hint).
+The guard accepts exactly `[labeled]` (label and `/ci` only: no auto-run on
+ready, no hint) or that five-type set, and with the latter requires one
+`ci-hint.yml` job with `contexts` and `statuses: write`. A consumer still on
+`[labeled]` keeps working unchanged.
 
 `/ci` alone dispatches every listed suite; `/ci tests.yml` dispatches one. A
 name that is not in the repo's list is refused. Only `OWNER`, `MEMBER` and

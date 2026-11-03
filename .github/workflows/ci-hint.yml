@@ -67,7 +67,9 @@ jobs:
         with:
           repository: boonty-io/.github
           ref: ${{ inputs.shared_ref }}
-          sparse-checkout: scripts/ci-request-decide.sh
+          sparse-checkout: |
+            scripts/ci-request-decide.sh
+            scripts/ci-hint-should-post.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -81,8 +83,11 @@ jobs:
           echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           scripts/ci-request-decide.sh "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
 
+      # `/ci tests.yml` dispatches a subset, and which context each suite
+      # reports is not known here, so a partial request posts nothing rather
+      # than mark contexts "running" that no suite will answer.
       - name: Post the pending lines
-        if: steps.decide.outputs.go == 'true' || steps.decide.outputs.hint == 'true'
+        if: (steps.decide.outputs.go == 'true' && steps.decide.outputs.workflows == '') || steps.decide.outputs.hint == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GO: ${{ steps.decide.outputs.go }}
@@ -120,17 +125,9 @@ jobs:
             c="$(printf '%s' "$c" | tr -d '[:space:]')"
             [ -n "$c" ] || continue
             row="$(latest "$c")"
-            if [ -n "$row" ]; then
-              created="$(printf '%s' "$row" | cut -f2)"
-              desc="$(printf '%s' "$row" | cut -f3)"
-              is_hint=0; case "$desc" in "Not run yet:"*|"Requested:"*) is_hint=1 ;; esac
-              # A new head that already carries anything: leave it.
-              [ "$GO" = "true" ] || continue
-              # A status posted after this job started is a suite that already answered.
-              [[ "$created" < "$STARTED" ]] || continue
-              # Marked ready on a head that already ran: ci-request.yml dispatches nothing.
-              if [ "$SOURCE" = "ready" ] && [ "$is_hint" -eq 0 ]; then continue; fi
-            fi
+            created="$(printf '%s' "$row" | cut -f2)"
+            desc="$(printf '%s' "$row" | cut -f3)"
+            [ "$(scripts/ci-hint-should-post.sh "$GO" "$SOURCE" "$STARTED" "$created" "$desc")" = yes ] || continue
             gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$sha" \
               -f state=pending -f context="$c" -f target_url="$url" -f description="$state_desc" >/dev/null
             echo "posted $c: $state_desc"
