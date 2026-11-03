@@ -58,6 +58,7 @@ on:
 # A group keeps one pending run, so hint-only events (a draft opened, reopened,
 # pushed to) queue apart from requests: otherwise a push behind a queued
 # `ci:run` replaces it. Hints cancel each other and never touch a request.
+# The hint predicate appears twice (group, cancel-in-progress): keep them identical.
 concurrency:
   group: ci-request-${{ github.event.pull_request.number || github.event.issue.number }}-${{ (github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'opened' && github.event.pull_request.draft))) && 'hint' || 'request' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'opened' && github.event.pull_request.draft)) }}
