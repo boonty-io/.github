@@ -1,0 +1,137 @@
+# ci-hint — make every required `ci/*` line on the PR page say something.
+#
+# Opt-in, reusable (`workflow_call`), called from the consumer's
+# `ci-request.yml` as a second job next to `ci-request.yml@main`. It is a
+# separate workflow because it needs `statuses: write`, which a caller that
+# has not opted in does not grant — and a reusable workflow cannot ask for
+# more than its caller gives, so folding it into `ci-request.yml` would break
+# every consumer that has not opted in.
+#
+# Without it, an unrequested context and a running one both read "Expected —
+# Waiting for status to be reported", with nothing to click: a suite posts its
+# `ci/*` status only when it ends. With it, per context in `contexts`:
+#
+#   new head, not a request   PENDING "Not run yet: mark the PR ready, add the
+#   (opened draft, reopened,  ci:run label or comment /ci", linking the docs.
+#   synchronize)              Never overwrites a status already on the head.
+#
+#   request (label, /ci, PR   PENDING "Requested: running", linking the
+#   marked ready)             head's dispatched runs. Never overwrites a status
+#                             posted after this job started (a suite that
+#                             already finished). On "ready" it also leaves a
+#                             real verdict alone: ci-request.yml skips a head
+#                             that already ran, so there is no new run to
+#                             point at.
+#
+# A suite's own `ci-status` step replaces the line with the verdict. The hint
+# is always `pending`, so it can never satisfy a required check.
+name: ci-hint
+
+on:
+  workflow_call:
+    inputs:
+      contexts:
+        description: Comma-separated commit-status contexts the suites report (e.g. `ci/build,ci/unit`).
+        required: true
+        type: string
+      label:
+        description: The label that requests CI (same as ci-request.yml).
+        required: false
+        default: 'ci:run'
+        type: string
+      command:
+        description: The comment command that requests CI (same as ci-request.yml).
+        required: false
+        default: '/ci'
+        type: string
+      shared_ref:
+        description: Ref of boonty-io/.github to take the decision script from.
+        required: false
+        default: main
+        type: string
+
+permissions: {}
+
+jobs:
+  hint:
+    name: hint
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read  # resolve the head of a `/ci` comment
+      statuses: write      # the pending lines
+    steps:
+      - name: Check out the decision script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: boonty-io/.github
+          ref: ${{ inputs.shared_ref }}
+          sparse-checkout: scripts/ci-request-decide.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Decide
+        id: decide
+        env:
+          CI_LABEL: ${{ inputs.label }}
+          CI_COMMAND: ${{ inputs.command }}
+        run: |
+          set -euo pipefail
+          echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          scripts/ci-request-decide.sh "$GITHUB_EVENT_PATH" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Post the pending lines
+        if: steps.decide.outputs.go == 'true' || steps.decide.outputs.hint == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GO: ${{ steps.decide.outputs.go }}
+          SOURCE: ${{ steps.decide.outputs.source }}
+          PR: ${{ steps.decide.outputs.pr }}
+          STARTED: ${{ steps.decide.outputs.started }}
+          CONTEXTS: ${{ inputs.contexts }}
+          LABEL: ${{ inputs.label }}
+          COMMAND: ${{ inputs.command }}
+          DOCS: https://github.com/boonty-io/.github/blob/main/docs/on-demand-ci.md
+        run: |
+          set -euo pipefail
+          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,headRefName,isCrossRepository > pr.json
+          if [ "$(jq -r .isCrossRepository pr.json)" = "true" ]; then
+            echo "::notice title=ci-hint::fork pull request — nothing posted"; exit 0
+          fi
+          sha="$(jq -r .headRefOid pr.json)"
+          ref="$(jq -r .headRefName pr.json)"
+          # Latest status per context on the head: `context<TAB>created_at<TAB>description`.
+          gh api "repos/$GITHUB_REPOSITORY/commits/$sha/statuses" --paginate \
+            --jq '.[] | [.context, .created_at, (.description // "")] | @tsv' > statuses.tsv
+          latest() { awk -F'\t' -v c="$1" '$1 == c { print; exit }' statuses.tsv; }
+
+          if [ "$GO" = "true" ]; then
+            state_desc="Requested: running (see the runs on this branch)"
+            enc_ref="$(jq -rn --arg r "$ref" '$r | @uri')"
+            url="https://github.com/$GITHUB_REPOSITORY/actions?query=event%3Aworkflow_dispatch+branch%3A$enc_ref"
+          else
+            state_desc="Not run yet: mark the PR ready, add the $LABEL label or comment $COMMAND"
+            url="$DOCS"
+          fi
+
+          IFS=',' read -r -a contexts <<< "$CONTEXTS"
+          for c in "${contexts[@]}"; do
+            c="$(printf '%s' "$c" | tr -d '[:space:]')"
+            [ -n "$c" ] || continue
+            row="$(latest "$c")"
+            if [ -n "$row" ]; then
+              created="$(printf '%s' "$row" | cut -f2)"
+              desc="$(printf '%s' "$row" | cut -f3)"
+              is_hint=0; case "$desc" in "Not run yet:"*|"Requested:"*) is_hint=1 ;; esac
+              # A new head that already carries anything: leave it.
+              [ "$GO" = "true" ] || continue
+              # A status posted after this job started is a suite that already answered.
+              [[ "$created" < "$STARTED" ]] || continue
+              # Marked ready on a head that already ran: ci-request.yml dispatches nothing.
+              if [ "$SOURCE" = "ready" ] && [ "$is_hint" -eq 0 ]; then continue; fi
+            fi
+            gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$sha" \
+              -f state=pending -f context="$c" -f target_url="$url" -f description="$state_desc" >/dev/null
+            echo "posted $c: $state_desc"
+          done

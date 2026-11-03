@@ -106,11 +106,18 @@ def main(root):
             refs.add(str(w["shared_ref"]))
         if not suites:
             err("ci-request.yml", "lists no suite in `workflows`")
+        hints = [j for j in (req.get("jobs") or {}).values()
+                 if str((j or {}).get("uses", "")).startswith(f"{SHARED}.github/workflows/ci-hint.yml@")]
         if pr_types == HINT_TYPES:
-            if not str(w.get("contexts") or "").strip():
-                err("ci-request.yml", "triggers on new heads but sets no `contexts` — the hint would post nothing")
-            if (callers[0].get("permissions") or {}).get("statuses") != "write":
-                err("ci-request.yml", "triggers on new heads but the caller job lacks `statuses: write` for the hint")
+            if len(hints) != 1:
+                err("ci-request.yml", "triggers on new heads but does not call ci-hint.yml (exactly once)")
+            else:
+                if not str((hints[0].get("with") or {}).get("contexts") or "").strip():
+                    err("ci-request.yml", "calls ci-hint.yml with no `contexts` — the hint would post nothing")
+                if (hints[0].get("permissions") or {}).get("statuses") != "write":
+                    err("ci-request.yml", "the ci-hint.yml job lacks `statuses: write`")
+        elif hints:
+            err("ci-request.yml", f"calls ci-hint.yml but pull_request types are not {HINT_TYPES}")
 
     guard_called, called = False, set()
     for s in suites:

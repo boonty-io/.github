@@ -22,8 +22,8 @@
 #      run on their own — that is the spend this model removes.
 #
 # `opened` (draft), `reopened` and `synchronize` are not requests: they give
-# hint=true. Dependabot is skipped for 3 and for the hint: its token is
-# read-only, so the dispatch and the status would fail.
+# hint=true. Dependabot and fork PRs are skipped for 3 and for the hint: their
+# token is read-only, so the dispatch and the status would fail.
 #
 # Everything else is `go=false` — a different label, a comment on an issue,
 # a `/ci` from a first-time contributor, an edited comment. The decision is a pure function of the payload so it can be tested
@@ -60,6 +60,9 @@ case "$event_name" in
       ready_for_review|opened|reopened|synchronize)
         [ -n "$pr" ] || no "pull_request.number missing"
         [ "$author" != "dependabot[bot]" ] || no "Dependabot pull request: its token is read-only"
+        head_repo="$(jq -r '.pull_request.head.repo.full_name // ""' "$event_path")"
+        base_repo="$(jq -r '.repository.full_name // ""' "$event_path")"
+        [ -z "$head_repo" ] || [ "$head_repo" = "$base_repo" ] || no "pull request from a fork: its token is read-only"
         if [ "$action" = "ready_for_review" ] || { [ "$action" = "opened" ] && [ "$draft" = "false" ]; }; then
           echo "go=true"
           echo "pr=${pr}"
