@@ -133,7 +133,24 @@ class Guard(unittest.TestCase):
 
     def test_request_on_every_label_type(self):
         self.refuses(mutate("ci-request.yml", "types: [labeled]", "types: [labeled, synchronize]"),
-                     "pull_request types must be exactly [labeled]")
+                     "pull_request types must be exactly [labeled] or")
+
+    def test_request_with_hint_types_passes(self):
+        files = mutate("ci-request.yml", "types: [labeled]", "types: [labeled, opened, reopened, synchronize, ready_for_review]")
+        files["ci-request.yml"] = files["ci-request.yml"].replace("pull-requests: write", "pull-requests: write\n      statuses: write").replace(
+            "workflows: tests.yml", "workflows: tests.yml\n      contexts: ci/tests")
+        code, out = run(files)
+        self.assertEqual(code, 0, out)
+
+    def test_hint_types_without_contexts(self):
+        files = mutate("ci-request.yml", "types: [labeled]", "types: [labeled, opened, reopened, synchronize, ready_for_review]")
+        files["ci-request.yml"] = files["ci-request.yml"].replace("pull-requests: write", "pull-requests: write\n      statuses: write")
+        self.refuses(files, "sets no `contexts`")
+
+    def test_hint_types_without_statuses_write(self):
+        files = mutate("ci-request.yml", "types: [labeled]", "types: [labeled, opened, reopened, synchronize, ready_for_review]")
+        files["ci-request.yml"] = files["ci-request.yml"].replace("workflows: tests.yml", "workflows: tests.yml\n      contexts: ci/tests")
+        self.refuses(files, "lacks `statuses: write`")
 
     def test_empty_suite_list(self):
         self.refuses(mutate("ci-request.yml", "workflows: tests.yml", "workflows: ''"), "lists no suite")

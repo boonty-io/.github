@@ -6,18 +6,27 @@
 #
 #   go=true|false        run CI, or do nothing
 #   pr=<number>          the pull request (only when go=true)
-#   source=label|comment what made the request
+#   source=label|comment|ready  what made the request
 #   workflows=<csv>      override from `/ci <a.yml,b.yml>`, else empty
+#   hint=true            (only with go=false) a new head that has not been
+#                        requested: post the "how to run CI" pending statuses
+#   pr=<number>          also set with hint=true
 #   reason=<text>        why go=false (only when go=false)
 #
-# Two request shapes, and nothing else:
+# Three request shapes, and nothing else:
 #   1. `pull_request` / `labeled` where the label is $CI_LABEL (default `ci:run`).
 #   2. `issue_comment` / `created` on a pull request whose body is `/ci` or
 #      `/ci <workflows>` and whose author is OWNER, MEMBER or COLLABORATOR.
+#   3. `pull_request` / `ready_for_review`, or `opened` as a non-draft: the PR
+#      is ready to be reviewed, so CI runs without anyone asking. Drafts never
+#      run on their own — that is the spend this model removes.
 #
-# Everything that is not one of those two is `go=false` — a different label,
-# a comment on an issue, a `/ci` from a first-time contributor, an edited
-# comment. The decision is a pure function of the payload so it can be tested
+# `opened` (draft), `reopened` and `synchronize` are not requests: they give
+# hint=true. Dependabot is skipped for 3 and for the hint: its token is
+# read-only, so the dispatch and the status would fail.
+#
+# Everything else is `go=false` — a different label, a comment on an issue,
+# a `/ci` from a first-time contributor, an edited comment. The decision is a pure function of the payload so it can be tested
 # with fixtures and never needs the network.
 set -euo pipefail
 
@@ -43,10 +52,31 @@ no() {
 case "$event_name" in
   pull_request)
     action="$(jq -r '.action // ""' "$event_path")"
-    [ "$action" = "labeled" ] || no "pull_request action is '${action}', not 'labeled'"
+    pr="$(jq -r '.pull_request.number // ""' "$event_path")"
+    author="$(jq -r '.pull_request.user.login // ""' "$event_path")"
+    draft="$(jq -r '.pull_request.draft // false' "$event_path")"
+    case "$action" in
+      labeled) ;;
+      ready_for_review|opened|reopened|synchronize)
+        [ -n "$pr" ] || no "pull_request.number missing"
+        [ "$author" != "dependabot[bot]" ] || no "Dependabot pull request: its token is read-only"
+        if [ "$action" = "ready_for_review" ] || { [ "$action" = "opened" ] && [ "$draft" = "false" ]; }; then
+          echo "go=true"
+          echo "pr=${pr}"
+          echo "source=ready"
+          echo "workflows="
+          exit 0
+        fi
+        echo "go=false"
+        echo "hint=true"
+        echo "pr=${pr}"
+        printf 'reason=%s\n' "pull_request ${action} is not a request (draft or new head): hint only"
+        exit 0
+        ;;
+      *) no "pull_request action is '${action}', not a request" ;;
+    esac
     label="$(jq -r '.label.name // ""' "$event_path")"
     [ "$label" = "$ci_label" ] || no "label '${label}' is not '${ci_label}'"
-    pr="$(jq -r '.pull_request.number // ""' "$event_path")"
     [ -n "$pr" ] || no "pull_request.number missing"
     echo "go=true"
     echo "pr=${pr}"

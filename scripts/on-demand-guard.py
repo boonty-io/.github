@@ -17,6 +17,9 @@ import os, re, sys
 import yaml
 
 SHARED = "boonty-io/.github/"
+# The opt-in trigger set: labeled (request), ready_for_review / opened (auto-run
+# when ready), reopened / synchronize (the "how to run CI" hint).
+HINT_TYPES = ["labeled", "opened", "reopened", "synchronize", "ready_for_review"]
 LONG_LIVED = {"main", "master", "staging", "develop"}
 DISPATCH_INPUTS = {"pr", "base", "head_sha"}
 
@@ -85,8 +88,9 @@ def main(root):
     on = triggers(req)
     if set(on) != {"pull_request", "issue_comment"}:
         err("ci-request.yml", f"must trigger on exactly pull_request and issue_comment, got {sorted(map(str, on))}")
-    if (on.get("pull_request") or {}).get("types") != ["labeled"]:
-        err("ci-request.yml", "pull_request types must be exactly [labeled]")
+    pr_types = (on.get("pull_request") or {}).get("types")
+    if pr_types not in (["labeled"], HINT_TYPES):
+        err("ci-request.yml", f"pull_request types must be exactly [labeled] or {HINT_TYPES}")
     if (on.get("issue_comment") or {}).get("types") != ["created"]:
         err("ci-request.yml", "issue_comment types must be exactly [created]")
 
@@ -102,6 +106,11 @@ def main(root):
             refs.add(str(w["shared_ref"]))
         if not suites:
             err("ci-request.yml", "lists no suite in `workflows`")
+        if pr_types == HINT_TYPES:
+            if not str(w.get("contexts") or "").strip():
+                err("ci-request.yml", "triggers on new heads but sets no `contexts` — the hint would post nothing")
+            if (callers[0].get("permissions") or {}).get("statuses") != "write":
+                err("ci-request.yml", "triggers on new heads but the caller job lacks `statuses: write` for the hint")
 
     guard_called, called = False, set()
     for s in suites:

@@ -11,10 +11,45 @@ repository implements the request half.
 | --- | --- | --- |
 | push to a feature branch / PR sync | nothing | — |
 | PR labelled `ci:run`, or `/ci` comment by an org member | every suite workflow the repo lists | dispatched on the PR head |
-| PR marked ready for review | nothing — flipping is the *result* of green, never a trigger | — |
+| PR marked ready for review, or opened as non-draft | every suite, unless this head already has a `ci/*` run | dispatched on the PR head |
+| PR opened as draft, reopened, or pushed to (opt-in, see below) | no suite — a pending "Not run yet" status per required context, saying how to run CI | — |
 | `merge_group` | every suite once more before landing | merge queue |
 | push to `staging` / `main` | build / deploy workflows only | — |
 | `workflow_dispatch` | any single suite, by hand | — |
+
+Drafts never run on their own: a PR is marked ready when it is ready to be
+reviewed, and that is when CI runs. Marking a draft ready after its head is
+already green (the AI flow) does not run it twice — the request is skipped
+when the head carries any `ci/*` status other than the hint. Dependabot PRs
+are skipped (read-only token); request them by label or `/ci`.
+
+### Opt-in: say how to run CI on the PR page
+
+Without it, an unrequested required context reads "Expected — Waiting for
+status to be reported", with nothing to click. A consumer that lists the
+contexts gets a PENDING status per context on every new head instead, whose
+description reads "Not run yet: mark the PR ready, add the ci:run label or
+comment /ci" and links here. A suite overwrites it when it runs; the hint
+never overwrites a status already on the head.
+
+```yaml
+on:
+  pull_request:
+    types: [labeled, opened, reopened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+jobs:
+  request:
+    uses: boonty-io/.github/.github/workflows/ci-request.yml@main
+    permissions: { contents: read, actions: write, pull-requests: write, statuses: write }
+    with:
+      workflows: tests.yml,ci.yml
+      contexts: ci/tests,ci/build
+```
+
+The guard accepts exactly `[labeled]` or that five-type set, and with the
+latter requires `contexts` and `statuses: write`. A consumer still on
+`[labeled]` keeps working unchanged (no auto-run on ready, no hint).
 
 `/ci` alone dispatches every listed suite; `/ci tests.yml` dispatches one. A
 name that is not in the repo's list is refused. Only `OWNER`, `MEMBER` and

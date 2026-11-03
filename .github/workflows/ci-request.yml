@@ -5,8 +5,16 @@
 #
 #   pull_request / labeled   — the `ci:run` label (applied by Claude once the
 #                              four review gates pass, or by a human)
+#   pull_request / ready_for_review, or opened as non-draft
+#                            — the PR is ready to be reviewed: CI runs without
+#                              a label, unless this head already ran or is running
 #   issue_comment / created  — `/ci` (or `/ci tests.yml,ci.yml`) from an
 #                              OWNER, MEMBER or COLLABORATOR
+#
+# Optional: with `pull_request` types `opened, reopened, synchronize` and the
+# `contexts` input, every new head that is not a request gets a PENDING status
+# per required context whose description says how to run CI — so the PR page
+# says what to do instead of "Expected — Waiting for status to be reported".
 #
 # On a request it resolves the PR head, removes the label so it can be
 # re-applied for the next run, and dispatches each suite workflow named in
@@ -43,6 +51,14 @@ on:
         required: false
         default: '/ci'
         type: string
+      contexts:
+        description: >-
+          Comma-separated commit-status contexts the suites report (e.g. `ci/build,ci/unit`).
+          When set, a new head that is not a request gets a pending "how to run CI" status per
+          context. Needs `statuses: write` on the calling job.
+        required: false
+        default: ''
+        type: string
       shared_ref:
         description: Ref of boonty-io/.github to take the decision script from. Pin to a branch only while testing that branch.
         required: false
@@ -58,6 +74,11 @@ on:
 
 permissions: {}
 
+env:
+  # Prefix of the hint description. The ready path tells a hint from a real
+  # run by it, so it must stay a stable string.
+  CI_HINT: Not run yet
+
 jobs:
   request:
     name: request
@@ -67,6 +88,7 @@ jobs:
       contents: read
       actions: write        # gh workflow run
       pull-requests: write  # consume the label
+      statuses: write       # the "how to run CI" hint (only with `contexts`)
     outputs:
       go: ${{ steps.decide.outputs.go }}
       pr: ${{ steps.decide.outputs.pr }}
@@ -95,9 +117,57 @@ jobs:
           REASON: ${{ steps.decide.outputs.reason }}
         run: echo "::notice title=ci-request::no CI requested — ${REASON}"
 
+      # A PR marked ready after its CI already ran on this head (the AI flow
+      # flips to ready only once green) must not pay for a second run. Any
+      # `ci/*` status on the head that is not our own hint means a run was
+      # already requested for it.
+      - name: Skip a ready PR whose head already ran
+        id: ready
+        if: steps.decide.outputs.go == 'true' && steps.decide.outputs.source == 'ready'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HINT: ${{ env.CI_HINT }}
+        run: |
+          set -euo pipefail
+          ran="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/statuses" --paginate \
+            --jq '.[] | select((.context | startswith("ci/")) and ((.description // "") | startswith(env.HINT) | not)) | .context' \
+            | sort -u | paste -sd, -)"
+          if [ -n "$ran" ]; then
+            echo "::notice title=ci-request::ready for review, but ${HEAD_SHA} already ran (${ran}) — not dispatching again"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Say how to run CI on this head
+        if: steps.decide.outputs.hint == 'true' && inputs.contexts != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CONTEXTS: ${{ inputs.contexts }}
+          HINT: ${{ env.CI_HINT }}
+          LABEL: ${{ inputs.label }}
+          COMMAND: ${{ inputs.command }}
+          DOCS: https://github.com/boonty-io/.github/blob/main/docs/on-demand-ci.md
+        run: |
+          set -euo pipefail
+          # Never overwrite a status a suite already posted on this head.
+          have="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/statuses" --paginate --jq '.[].context' | sort -u)"
+          IFS=',' read -r -a contexts <<< "$CONTEXTS"
+          for c in "${contexts[@]}"; do
+            c="$(printf '%s' "$c" | tr -d '[:space:]')"
+            [ -n "$c" ] || continue
+            if printf '%s\n' "$have" | grep -qxF -- "$c"; then continue; fi
+            gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+              -f state=pending -f context="$c" -f target_url="$DOCS" \
+              -f description="$HINT: mark the PR ready, add the $LABEL label or comment $COMMAND" >/dev/null
+          done
+          echo "::notice title=ci-request::posted the how-to-run hint on ${HEAD_SHA}"
+
       - name: Resolve the pull request head
         id: pr
-        if: steps.decide.outputs.go == 'true'
+        if: steps.decide.outputs.go == 'true' && steps.ready.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ steps.decide.outputs.pr }}
@@ -130,7 +200,7 @@ jobs:
         run: gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label "$LABEL"
 
       - name: Dispatch the suites
-        if: steps.decide.outputs.go == 'true'
+        if: steps.decide.outputs.go == 'true' && steps.ready.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ steps.decide.outputs.pr }}
