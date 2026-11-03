@@ -89,6 +89,31 @@ otherwise anyone with write access could dispatch the suite by hand with
 `runs-on: ${{ inputs.runner == 'github' && 'ubuntu-latest' || '<blacksmith label>' }}`
 so a runner-specific failure can be reproduced on the other pool.
 
+Use the shared verifier rather than a local copy:
+
+```yaml
+      - uses: actions/checkout@<sha>          # first: the guard refuses the reverse order
+      - id: verify-request
+        if: github.event_name == 'workflow_dispatch'
+        uses: boonty-io/.github/.github/actions/verify-ci-request@main
+        with:
+          pr: ${{ inputs.pr }}
+          base: ${{ inputs.base }}
+          head_sha: ${{ inputs.head_sha }}
+```
+
+The job needs `permissions: pull-requests: read`.
+
+## Keeping it honest: the guard
+
+One suite in each consumer calls `.github/workflows/on-demand-guard.yml` as a
+job its verdict depends on. `scripts/on-demand-guard.py` refuses a suite back on
+`pull_request`/`pull_request_target` or on an unfiltered `push`, a missing
+dispatch input or `merge_group`, a missing or misplaced verify step, a missing
+`ci-status`, a status-posting workflow absent from `ci-request.yml`, and more
+than one `boonty-io/.github` ref. Lightweight PR-shaped checks (title, commit
+policy, docs impact) are not suites and may stay on `pull_request`.
+
 ## Runner routing (static tier)
 
 - Short jobs (lint, typecheck, unit ≤ 5 min, actionlint, audit, verdicts) →
@@ -105,6 +130,8 @@ so a runner-specific failure can be reproduced on the other pool.
 Rulesets on `staging` and `main` (payload in `rulesets/`) require the suite
 status contexts (`ci/tests`, `ci/build`, `ci/verify`), the four `gates/*` commit statuses posted by the ai-config gate
 runner, one approving review, resolved conversations, an up-to-date branch,
-and the merge queue. Draft PRs are unmergeable already. `gh pr ready` is
+and the merge queue. `apply.sh` pins every `ci/*` context to the GitHub
+Actions App (`integration_id` 15368), so only a status posted by a workflow
+counts — a PAT holding `repo:status` cannot satisfy it. Draft PRs are unmergeable already. `gh pr ready` is
 refused by the ai-config PreToolUse hook until every required context is
 green on HEAD.

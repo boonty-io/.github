@@ -1,0 +1,55 @@
+# on-demand-guard — assert a consumer still follows docs/on-demand-ci.md.
+#
+# Reusable (`workflow_call`). A consumer calls it as one job of one of its
+# dispatched suites and makes that suite's verdict job `need` it:
+#
+#   on-demand-guard:
+#     uses: boonty-io/.github/.github/workflows/on-demand-guard.yml@main
+#     with:
+#       shared_ref: main   # same ref as every other boonty-io/.github reference
+#
+# It fails when a suite is back on `pull_request`, lost a dispatch input or
+# `merge_group`, skips the request verification or the commit status, or when
+# a status-posting workflow is missing from ci-request.yml. The rules and their
+# reasons are `scripts/on-demand-guard.py`; its cases are
+# `test/on-demand-guard.test.py`.
+name: on-demand-guard
+
+on:
+  workflow_call:
+    inputs:
+      shared_ref:
+        description: Ref of boonty-io/.github to take the guard script from.
+        required: false
+        default: main
+        type: string
+
+permissions: {}
+
+jobs:
+  guard:
+    name: on-demand contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the consumer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/workflows
+      - name: Check out the guard
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: boonty-io/.github
+          ref: ${{ inputs.shared_ref }}
+          path: .shared-github
+          sparse-checkout: scripts/on-demand-guard.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Assert the on-demand contract
+        run: |
+          set -euo pipefail
+          python3 -I -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet --user 'pyyaml==6.0.2'
+          python3 -I .shared-github/scripts/on-demand-guard.py .
