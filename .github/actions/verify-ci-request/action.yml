@@ -1,0 +1,116 @@
+# verify-ci-request — bind a dispatched CI request to the pull request it names.
+#
+# Shared copy of the step webapp-admin and api-webapp each grew locally, so the
+# remaining consumers call ONE implementation:
+#
+#     - uses: actions/checkout@<sha>
+#     - id: verify-request
+#       if: github.event_name == 'workflow_dispatch'
+#       uses: boonty-io/.github/.github/actions/verify-ci-request@main
+#       with:
+#         pr: ${{ inputs.pr }}
+#         base: ${{ inputs.base }}
+#         head_sha: ${{ inputs.head_sha }}
+#
+# `ci-request.yml` dispatches the suites with three caller-supplied inputs:
+#
+#   - `base` drives the change detector. A dispatch with `base=<the head sha>`
+#     diffs nothing, so every gated job skips and the suite certifies a code
+#     commit as unaffected.
+#   - `head_sha` is handed to `ci-status`, which posts on `$GITHUB_SHA`; the
+#     binding belongs here too, before any input is trusted.
+#   - `pr` is what the other two are checked against.
+#
+# So: refuse anything this action cannot tie to an open pull request whose base
+# is `base` and whose head is the commit this run checked out. A dispatch with
+# no `pr` (a suite run by hand) is verified against nothing and gets no
+# shortcut — `base` must then be empty, so the detector falls back to the
+# default branch, which can only run MORE than a PR-scoped diff would.
+#
+# THE CALLING JOB MUST GRANT `pull-requests: read` — `gh pr view` 403s without
+# it, and the suite's required context then fails on every real request.
+# `scripts/on-demand-guard.py` asserts the grant on every job that uses it.
+name: verify-ci-request
+description: Refuse a dispatched CI request whose inputs do not match the pull request they name
+
+inputs:
+  pr:
+    description: Pull request number, as passed by ci-request.yml. Empty for a manual dispatch.
+    required: false
+    default: ''
+  base:
+    description: Base branch the request claims. Must be empty when pr is empty.
+    required: false
+    default: ''
+  head_sha:
+    description: The commit the request was made for. Must equal the commit this run checked out.
+    required: false
+    default: ''
+  github_token:
+    description: 'Token for `gh pr view`. The calling job needs the `pull-requests` read permission.'
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        PR: ${{ inputs.pr }}
+        BASE: ${{ inputs.base }}
+        HEAD_SHA: ${{ inputs.head_sha }}
+      run: |
+        set -euo pipefail
+
+        if [ -n "$HEAD_SHA" ] && [ "$HEAD_SHA" != "$GITHUB_SHA" ]; then
+          echo "::error title=verify-request::the request named head_sha=${HEAD_SHA:0:7} but this run is on ${GITHUB_SHA:0:7} — refusing to run a suite whose verdict would describe another commit"
+          exit 1
+        fi
+
+        if [ -z "$PR" ]; then
+          if [ -n "$BASE" ]; then
+            echo "::error title=verify-request::base='$BASE' given without pr — a base can only be trusted when it is the pull request's"
+            exit 1
+          fi
+          echo "::notice title=verify-request::no pr input — manual dispatch, nothing to bind against"
+          exit 0
+        fi
+
+        case "$PR" in *[!0-9]* | "") echo "::error title=verify-request::pr='$PR' is not a pull request number"; exit 1 ;; esac
+
+        # A 403 here means the calling job is missing `pull-requests: read`.
+        # Say so, rather than letting `gh` report a bare HTTP error that reads
+        # like a missing pull request.
+        if ! gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
+            --json baseRefName,headRefName,headRefOid,state > pr.json 2> gh-err.txt; then
+          cat gh-err.txt
+          if grep -qiE 'HTTP 403|not accessible|Resource protected' gh-err.txt; then
+            echo "::error title=verify-request::cannot read PR #$PR — this job needs \`permissions: pull-requests: read\`"
+          else
+            echo "::error title=verify-request::cannot read PR #$PR — see the error above"
+          fi
+          rm -f pr.json gh-err.txt
+          exit 1
+        fi
+        rm -f gh-err.txt
+
+        base="$(jq -r .baseRefName pr.json)"
+        head_ref="$(jq -r .headRefName pr.json)"
+        head_sha="$(jq -r .headRefOid pr.json)"
+        state="$(jq -r .state pr.json)"
+        rm -f pr.json
+
+        if [ "$state" != "OPEN" ]; then
+          echo "::error title=verify-request::PR #$PR is $state — a closed pull request cannot request CI"
+          exit 1
+        fi
+        if [ "$base" != "$BASE" ]; then
+          echo "::error title=verify-request::PR #$PR is based on '$base', the dispatch said '$BASE' — refusing to compute a changes verdict against the wrong base"
+          exit 1
+        fi
+        if [ "$head_sha" != "$GITHUB_SHA" ] || [ "$head_ref" != "$GITHUB_REF_NAME" ]; then
+          echo "::error title=verify-request::PR #$PR head is $head_ref@${head_sha:0:7}, this run is $GITHUB_REF_NAME@${GITHUB_SHA:0:7} — the branch moved, request again"
+          exit 1
+        fi
+        echo "verified: PR #$PR base=$base head=$head_ref@${head_sha:0:7}"
