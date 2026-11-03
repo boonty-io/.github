@@ -11,9 +11,10 @@
 # Waiting for status to be reported", with nothing to click: a suite posts its
 # `ci/*` status only when it ends. With it, per context in `contexts`:
 #
-#   new head, not a request   PENDING "Not run yet: mark the PR ready, add the
-#   (opened draft, reopened,  ci:run label or comment /ci", linking the docs.
-#   synchronize)              Never overwrites a status already on the head.
+#   new head, not a request   PENDING "Not run yet: add the ci:run label or
+#   (opened draft, reopened,  comment /ci" (a draft also reads "mark the PR
+#   synchronize)              ready, "), linking the docs. Never overwrites a
+#                             status already on the head.
 #
 #   request (label, /ci, PR   PENDING "Requested: running", linking the
 #   marked ready)             head's dispatched runs. Never overwrites a status
@@ -100,7 +101,7 @@ jobs:
           DOCS: https://github.com/boonty-io/.github/blob/main/docs/on-demand-ci.md
         run: |
           set -euo pipefail
-          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,headRefName,isCrossRepository > pr.json
+          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,headRefName,isCrossRepository,isDraft > pr.json
           if [ "$(jq -r .isCrossRepository pr.json)" = "true" ]; then
             echo "::notice title=ci-hint::fork pull request — nothing posted"; exit 0
           fi
@@ -116,7 +117,10 @@ jobs:
             enc_ref="$(jq -rn --arg r "$ref" '$r | @uri')"
             url="https://github.com/$GITHUB_REPOSITORY/actions?query=event%3Aworkflow_dispatch+branch%3A$enc_ref"
           else
-            state_desc="Not run yet: mark the PR ready, add the $LABEL label or comment $COMMAND"
+            # Marking ready auto-runs only from a draft; a ready PR's push needs a request.
+            ready_hint=""
+            if [ "$(jq -r .isDraft pr.json)" = "true" ]; then ready_hint="mark the PR ready, "; fi
+            state_desc="Not run yet: ${ready_hint}add the $LABEL label or comment $COMMAND"
             url="$DOCS"
           fi
 
