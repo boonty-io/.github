@@ -58,8 +58,12 @@ jobs:
           base: ${{ inputs.base }}
           head_sha: ${{ inputs.head_sha }}
       - run: echo test
+  guard:
+    uses: boonty-io/.github/.github/workflows/on-demand-guard.yml@main
+    with:
+      shared_ref: main
   tests-complete:
-    needs: [unit]
+    needs: [unit, guard]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -201,6 +205,55 @@ class Guard(unittest.TestCase):
     def test_shared_ref_input_disagrees(self):
         self.refuses(mutate("ci-request.yml", "shared_ref: main", "shared_ref: feat/x"),
                      "boonty-io/.github is referenced at more than one ref")
+
+    def test_suite_chained_by_workflow_run(self):
+        self.refuses(mutate("tests.yml", "  merge_group:\n", "  merge_group:\n  workflow_run:\n    workflows: [lint-title]\n"),
+                     "tests.yml: runs on workflow_run")
+
+    def test_verify_guarded_by_negated_dispatch(self):
+        self.refuses(mutate("tests.yml", "if: github.event_name == 'workflow_dispatch'", "if: github.event_name != 'workflow_dispatch'"),
+                     "tests.yml: verify-ci-request step must be guarded by `if: github.event_name == 'workflow_dispatch'`")
+
+    def test_status_negated_always(self):
+        self.refuses(mutate("tests.yml", "      - if: always()\n        uses: boonty-io", "      - if: ${{ !always() }}\n        uses: boonty-io"),
+                     "tests.yml: ci-status step must run `if: always()`")
+
+    def test_guard_not_called(self):
+        files = mutate("tests.yml", "  guard:\n    uses: boonty-io/.github/.github/workflows/on-demand-guard.yml@main\n    with:\n      shared_ref: main\n", "")
+        files["tests.yml"] = files["tests.yml"].replace("needs: [unit, guard]", "needs: [unit]")
+        self.refuses(files, "no suite calls boonty-io/.github/.github/workflows/on-demand-guard.yml")
+
+    def test_guard_shared_ref_disagrees(self):
+        self.refuses(mutate("tests.yml", "      shared_ref: main\n", "      shared_ref: feat/x\n"),
+                     "boonty-io/.github is referenced at more than one ref")
+
+    def test_tags_only_push_and_scalar_branch_are_fine(self):
+        code, out = run(mutate("tests.yml", "    branches: [staging, main]\n", "    tags: ['v*']\n"))
+        self.assertEqual(code, 0, out)
+        code, out = run(mutate("tests.yml", "branches: [staging, main]", "branches: main"))
+        self.assertEqual(code, 0, out)
+
+    def test_read_all_grants_pull_request_read(self):
+        code, out = run(mutate("tests.yml", "    permissions:\n      contents: read\n      pull-requests: read\n", "    permissions: read-all\n"))
+        self.assertEqual(code, 0, out)
+
+    def test_reusable_suite_is_followed(self):
+        files = good()
+        impl = SUITE.replace("""on:
+  workflow_dispatch:
+    inputs:
+      pr: { required: false, type: string }
+      base: { required: false, type: string }
+      head_sha: { required: false, type: string }
+  merge_group:
+  push:
+    branches: [staging, main]
+""", "on:\n  workflow_call:\n")
+        assert impl != SUITE
+        files["_impl.yml"] = impl
+        files["tests.yml"] = SUITE.split("jobs:")[0] + "jobs:\n  run:\n    uses: ./.github/workflows/_impl.yml\n    secrets: inherit\n"
+        code, out = run(files)
+        self.assertEqual(code, 0, out)
 
 
 if __name__ == "__main__":

@@ -51,5 +51,5 @@ jobs:
       - name: Assert the on-demand contract
         run: |
           set -euo pipefail
-          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet --user 'pyyaml==6.0.2'
-          python3 .shared-github/scripts/on-demand-guard.py .
+          python3 -I -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet --user 'pyyaml==6.0.2'
+          python3 -I .shared-github/scripts/on-demand-guard.py .

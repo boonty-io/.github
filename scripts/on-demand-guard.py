@@ -40,7 +40,21 @@ def grants(doc, job, scope, levels):
     perms = job["permissions"] if "permissions" in job else doc.get("permissions")
     if perms == "write-all":
         return True
+    if perms == "read-all":
+        return "read" in levels
     return isinstance(perms, dict) and perms.get(scope) in levels
+
+
+DISPATCH_IF = re.compile(r"^\s*(\$\{\{\s*)?github\.event_name\s*==\s*'workflow_dispatch'(\s*\}\})?\s*$")
+ALWAYS_IF = re.compile(r"(?<!!)\balways\(\)")
+GUARD_WF = f"{SHARED}.github/workflows/on-demand-guard.yml@"
+
+
+def local_calls(job):
+    """`uses: ./.github/workflows/x.yml` on a job → 'x.yml', else None."""
+    u = str(job.get("uses", ""))
+    m = re.fullmatch(r"\./\.github/workflows/([\w.-]+\.ya?ml)", u)
+    return m.group(1) if m else None
 
 
 def uses_action(step, name):
@@ -89,18 +103,22 @@ def main(root):
         if not suites:
             err("ci-request.yml", "lists no suite in `workflows`")
 
+    guard_called, called = False, set()
     for s in suites:
         doc = docs.get(s)
         if doc is None:
             err(s, "listed in ci-request.yml but does not exist")
             continue
         t = triggers(doc)
-        for bad in ("pull_request", "pull_request_target"):
+        for bad in ("pull_request", "pull_request_target", "workflow_run"):
             if bad in t:
                 err(s, f"runs on {bad} — a suite runs only when requested (ci:run label or /ci)")
         if "push" in t:
-            br = (t["push"] or {}).get("branches")
-            if not br or not set(br) <= LONG_LIVED:
+            push = t["push"] or {}
+            br = push.get("branches")
+            br = [br] if isinstance(br, str) else br
+            tags_only = not br and "tags" in push and "branches-ignore" not in push
+            if not tags_only and (not br or not set(br) <= LONG_LIVED):
                 err(s, f"push trigger must name long-lived branches only ({', '.join(sorted(LONG_LIVED))})")
         inputs = set(((t.get("workflow_dispatch") or {}).get("inputs") or {}))
         if not DISPATCH_INPUTS <= inputs:
@@ -109,14 +127,25 @@ def main(root):
             err(s, "no merge_group trigger")
 
         seen_verify = seen_status = False
-        for jname, job, steps in steps_by_job(doc):
+        walk, seen_docs = [(s, doc)], {s}
+        while walk:
+            here, d = walk.pop()
+            for _, job, _ in steps_by_job(d):
+                if str(job.get("uses", "")).startswith(GUARD_WF):
+                    guard_called = True
+                    if "shared_ref" in (job.get("with") or {}):
+                        refs.add(str(job["with"]["shared_ref"]))
+                callee = local_calls(job)
+                if callee and callee in docs and callee not in seen_docs:
+                    seen_docs.add(callee); called.add(callee); walk.append((callee, docs[callee]))
+        for jname, job, steps in (x for f in sorted(seen_docs) for x in steps_by_job(docs[f])):
             checked_out = False
             for st in steps:
                 if str(st.get("uses", "")).startswith("actions/checkout@"):
                     checked_out = True
                 if uses_action(st, "verify-ci-request"):
                     seen_verify = True
-                    if "workflow_dispatch" not in str(st.get("if", "")):
+                    if not DISPATCH_IF.match(str(st.get("if", ""))):
                         err(s, "verify-ci-request step must be guarded by `if: github.event_name == 'workflow_dispatch'`")
                     if not grants(doc, job, "pull-requests", {"read", "write"}):
                         err(s, f"job `{jname}` uses verify-ci-request without pull-requests: read")
@@ -124,7 +153,7 @@ def main(root):
                         err(s, f"job `{jname}` runs verify-ci-request before actions/checkout")
                 if uses_action(st, "ci-status"):
                     seen_status = True
-                    if "always()" not in str(st.get("if", "")):
+                    if not ALWAYS_IF.search(str(st.get("if", ""))):
                         err(s, "ci-status step must run `if: always()` so a failure is posted too")
                     if not grants(doc, job, "statuses", {"write"}):
                         err(s, f"job `{jname}` uses ci-status without statuses: write")
@@ -133,8 +162,11 @@ def main(root):
         if not seen_status:
             err(s, "no ci-status step — its verdict would never reach the PR rollup")
 
+    if suites and not guard_called:
+        err("ci-request.yml", "no suite calls boonty-io/.github/.github/workflows/on-demand-guard.yml — the contract would be unguarded")
+
     for f, doc in docs.items():
-        if f in suites:
+        if f in suites or f in called:
             continue
         if any(uses_action(st, "ci-status") for _, _, sts in steps_by_job(doc) for st in sts):
             err(f, "posts a ci-status but is not listed in ci-request.yml — it is never dispatched, so its context stays `expected`")
