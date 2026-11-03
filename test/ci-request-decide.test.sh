@@ -61,6 +61,14 @@ if printf '%s\n' "$out" | grep -qx 'go=false' && ! printf '%s\n' "$out" | grep -
 else
   echo "✗ [pull_request/opened-dependabot.json] expected go=false and no hint, got:"; printf '%s\n' "$out" | sed 's/^/    /'; fail=$((fail + 1))
 fi
+# 20. a fork PR: read-only token, neither a run nor a hint
+n=$((n + 1))
+out="$(GITHUB_EVENT_NAME=pull_request "$decide" "$here/fixtures/ready-fork.json")"
+if printf '%s\n' "$out" | grep -qx 'go=false' && ! printf '%s\n' "$out" | grep -q '^hint='; then
+  echo "✓ [pull_request/ready-fork.json] go=false, no hint"
+else
+  echo "✗ [pull_request/ready-fork.json] expected go=false and no hint, got:"; printf '%s\n' "$out" | sed 's/^/    /'; fail=$((fail + 1))
+fi
 # 19. any other pull_request action → nothing, no hint
 n=$((n + 1))
 out="$(GITHUB_EVENT_NAME=pull_request "$decide" "$here/fixtures/closed.json")"

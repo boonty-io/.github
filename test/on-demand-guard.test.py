@@ -135,22 +135,37 @@ class Guard(unittest.TestCase):
         self.refuses(mutate("ci-request.yml", "types: [labeled]", "types: [labeled, synchronize]"),
                      "pull_request types must be exactly [labeled] or")
 
-    def test_request_with_hint_types_passes(self):
+    HINT_JOB = """  hint:
+    uses: boonty-io/.github/.github/workflows/ci-hint.yml@main
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    with:
+      contexts: ci/tests
+"""
+
+    def hinted(self, job=None):
         files = mutate("ci-request.yml", "types: [labeled]", "types: [labeled, opened, reopened, synchronize, ready_for_review]")
-        files["ci-request.yml"] = files["ci-request.yml"].replace("pull-requests: write", "pull-requests: write\n      statuses: write").replace(
-            "workflows: tests.yml", "workflows: tests.yml\n      contexts: ci/tests")
-        code, out = run(files)
+        files["ci-request.yml"] += self.HINT_JOB if job is None else job
+        return files
+
+    def test_request_with_hint_passes(self):
+        code, out = run(self.hinted())
         self.assertEqual(code, 0, out)
 
-    def test_hint_types_without_contexts(self):
-        files = mutate("ci-request.yml", "types: [labeled]", "types: [labeled, opened, reopened, synchronize, ready_for_review]")
-        files["ci-request.yml"] = files["ci-request.yml"].replace("pull-requests: write", "pull-requests: write\n      statuses: write")
-        self.refuses(files, "sets no `contexts`")
+    def test_hint_types_without_hint_job(self):
+        self.refuses(self.hinted(""), "does not call ci-hint.yml")
 
-    def test_hint_types_without_statuses_write(self):
-        files = mutate("ci-request.yml", "types: [labeled]", "types: [labeled, opened, reopened, synchronize, ready_for_review]")
-        files["ci-request.yml"] = files["ci-request.yml"].replace("workflows: tests.yml", "workflows: tests.yml\n      contexts: ci/tests")
-        self.refuses(files, "lacks `statuses: write`")
+    def test_hint_without_contexts(self):
+        self.refuses(self.hinted(self.HINT_JOB.replace("      contexts: ci/tests\n", "      contexts: ''\n")), "with no `contexts`")
+
+    def test_hint_without_statuses_write(self):
+        self.refuses(self.hinted(self.HINT_JOB.replace("      statuses: write\n", "")), "lacks `statuses: write`")
+
+    def test_hint_job_with_label_only_types(self):
+        files = good(); files["ci-request.yml"] += self.HINT_JOB
+        self.refuses(files, "calls ci-hint.yml but pull_request types are not")
 
     def test_empty_suite_list(self):
         self.refuses(mutate("ci-request.yml", "workflows: tests.yml", "workflows: ''"), "lists no suite")
