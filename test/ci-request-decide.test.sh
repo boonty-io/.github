@@ -25,8 +25,8 @@ expect() {
 expect pull_request labeled-ci-run.json 'go=true,pr=42,source=label'
 # 2. any other label → nothing (this is the case a `types: [labeled]` suite would have turned green-by-skip)
 expect pull_request labeled-other.json 'go=false'
-# 3. the right label on a different pull_request action → nothing
-expect pull_request synchronize.json 'go=false'
+# 3. a new head is not a request: no run, only the "how to run CI" hint
+expect pull_request synchronize.json 'go=false,hint=true,pr=42'
 # 4. a custom label name is honoured
 expect pull_request labeled-other.json 'go=true,pr=42' 'dependencies'
 # 5. `/ci` from a member on a PR → go, no workflow override
@@ -47,6 +47,28 @@ expect issue_comment comment-cix.json 'go=false'
 expect push labeled-ci-run.json 'go=false'
 # 13. an unreadable payload → nothing, and exit 0
 expect pull_request does-not-exist.json 'go=false'
+# 15. marking the PR ready for review runs CI without a label
+expect pull_request ready-for-review.json 'go=true,pr=42,source=ready,workflows='
+# 16. a PR opened as ready runs CI too
+expect pull_request opened-ready.json 'go=true,pr=42,source=ready'
+# 17. a draft never runs on its own — hint only
+expect pull_request opened-draft.json 'go=false,hint=true,pr=42'
+# 18. Dependabot: read-only token, neither a run nor a hint
+n=$((n + 1))
+out="$(GITHUB_EVENT_NAME=pull_request "$decide" "$here/fixtures/opened-dependabot.json")"
+if printf '%s\n' "$out" | grep -qx 'go=false' && ! printf '%s\n' "$out" | grep -q '^hint='; then
+  echo "✓ [pull_request/opened-dependabot.json] go=false, no hint"
+else
+  echo "✗ [pull_request/opened-dependabot.json] expected go=false and no hint, got:"; printf '%s\n' "$out" | sed 's/^/    /'; fail=$((fail + 1))
+fi
+# 19. any other pull_request action → nothing, no hint
+n=$((n + 1))
+out="$(GITHUB_EVENT_NAME=pull_request "$decide" "$here/fixtures/closed.json")"
+if printf '%s\n' "$out" | grep -qx 'go=false' && ! printf '%s\n' "$out" | grep -q '^hint='; then
+  echo "✓ [pull_request/closed.json] go=false, no hint"
+else
+  echo "✗ [pull_request/closed.json] expected go=false and no hint, got:"; printf '%s\n' "$out" | sed 's/^/    /'; fail=$((fail + 1))
+fi
 # 14. a label name carrying a newline cannot start a second output line
 n=$((n + 1))
 out="$(GITHUB_EVENT_NAME=pull_request "$decide" "$here/fixtures/labeled-newline.json")"
