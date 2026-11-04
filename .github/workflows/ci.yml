@@ -44,6 +44,7 @@ jobs:
           persist-credentials: false
       - run: test/ci-request-decide.test.sh
       - run: test/ci-hint-should-post.test.sh
+      - run: test/rulesets.test.sh
 
   on-demand-guard:
     name: on-demand guard cases

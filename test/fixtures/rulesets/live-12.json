@@ -1,0 +1,1 @@
+{"id":12,"name":"Staging","target":"branch","enforcement":"active","source_type":"Repository","conditions":{"ref_name":{"exclude":[],"include":["refs/heads/staging"]}},"bypass_actors":[],"rules":[{"type":"deletion"}]}

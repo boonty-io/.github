@@ -1,0 +1,31 @@
+[
+  {
+    "name": "Main & staging",
+    "target": "branch",
+    "enforcement": "active",
+    "conditions": {
+      "ref_name": {
+        "exclude": [],
+        "include": [
+          "refs/heads/main",
+          "refs/heads/staging"
+        ]
+      }
+    },
+    "bypass_actors": [
+      {
+        "actor_id": null,
+        "actor_type": "OrganizationAdmin",
+        "bypass_mode": "always"
+      }
+    ],
+    "rules": [
+      {
+        "type": "deletion"
+      },
+      {
+        "type": "non_fast_forward"
+      }
+    ]
+  }
+]

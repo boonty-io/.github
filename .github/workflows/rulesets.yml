@@ -1,0 +1,85 @@
+# Repository rulesets as code: rulesets/repos/<repo>.json is the desired state
+# of each repository's own rulesets (docs/rulesets.md).
+#
+#   pull_request touching them  → plan: the diff against live, in the job summary
+#   push to main touching them  → apply: create / update to match (never deletes)
+#   daily schedule              → plan: red when live state drifted from the files
+#   workflow_dispatch           → plan or apply, by hand
+#
+# Reads and writes go through the `boonty-rulesets` GitHub App (Administration
+# read/write on the org's repositories): GITHUB_TOKEN cannot read or change
+# another repository's rulesets, and a personal token would tie the change to
+# one person's machine. Its key is only exposed to the `rulesets` environment.
+name: rulesets
+
+on:
+  pull_request:
+    paths: ['rulesets/repos/**', 'scripts/rulesets.sh', '.github/workflows/rulesets.yml']
+  push:
+    branches: [main]
+    paths: ['rulesets/repos/**', 'scripts/rulesets.sh', '.github/workflows/rulesets.yml']
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: plan (read only) or apply
+        required: true
+        default: plan
+        type: choice
+        options: [plan, apply]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rulesets-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'main' }}
+  cancel-in-progress: false
+
+jobs:
+  rulesets:
+    name: rulesets ${{ (github.event_name == 'push' || inputs.mode == 'apply') && 'apply' || 'plan' }}
+    # A fork PR gets no secrets; it is planned once it lands on a branch here.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: rulesets
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Mint the rulesets App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RULESETS_APP_ID }}
+          private-key: ${{ secrets.RULESETS_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Plan or apply
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          MODE: ${{ (github.event_name == 'push' || inputs.mode == 'apply') && 'apply' || 'plan' }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -uo pipefail
+          rc=0
+          scripts/rulesets.sh "$MODE" "$OWNER" rulesets/repos/*.json > out.txt 2>&1 || rc=$?
+          cat out.txt
+          {
+            echo "### rulesets ${MODE}"
+            echo '```diff'
+            cat out.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # plan: 2 = drift. On a PR that is the change under review, not an
+          # error; on the schedule it means live rulesets were edited by hand.
+          if [ "$rc" -eq 2 ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            echo "::notice title=rulesets::this PR changes live rulesets; they are applied when it merges"
+            exit 0
+          fi
+          if [ "$rc" -eq 2 ]; then
+            echo "::error title=rulesets::live rulesets drifted from rulesets/repos; update the files or re-apply"
+          fi
+          exit "$rc"

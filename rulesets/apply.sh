@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Apply the on-demand-ci ruleset to one repository, merging that repo's own
 # suite contexts into the required checks. Needs repo admin.
+# Superseded for day-to-day changes by rulesets-as-code (docs/rulesets.md):
+# edit rulesets/repos/<repo>.json instead of running this by hand.
 #
 #   rulesets/apply.sh boonty-io/api-webapp "ci/tests,ci/build,ci/verify"
 #
