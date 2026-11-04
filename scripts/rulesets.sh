@@ -15,6 +15,12 @@
 # required checks by context, bypass actors). Any failed read stops the run
 # before a write (exit 1). Needs `gh` authenticated with Administration
 # read (plan, export) or read/write (apply) on the repositories.
+#
+# GitHub shows a ruleset's bypass actors only to a token that can write it:
+# with a read-only token every live ruleset looks like it has none. Set
+# RULESETS_SKIP_BYPASS=1 to plan with such a token: bypass actors are then
+# left out of both sides and the output says so. apply refuses it, since its
+# request bodies would then carry no bypass actors and clear them.
 set -euo pipefail
 
 usage() { echo "usage: $0 plan|apply <owner> <file>... | export <owner/repo>" >&2; exit 64; }
@@ -69,6 +75,16 @@ case "$cmd" in
   *) usage ;;
 esac
 
+skip_bypass="${RULESETS_SKIP_BYPASS:-}"
+case "$skip_bypass" in
+  ""|0) skip_bypass="" ;;
+  1) [ "$cmd" = plan ] || { echo "error: RULESETS_SKIP_BYPASS=1 is for plan only: apply would clear bypass actors" >&2; exit 64; }
+     echo "note: bypass actors are not compared (RULESETS_SKIP_BYPASS=1: the token cannot read them)" ;;
+  *) echo "error: RULESETS_SKIP_BYPASS must be 1 or empty" >&2; exit 64 ;;
+esac
+# Applied to both sides of a comparison only; never to a request body.
+view() { if [ -n "$skip_bypass" ]; then jq -c 'del(.bypass_actors)'; else cat; fi; }
+
 owner="$1"; shift
 for f in "$@"; do check_file "$f"; done   # every file is valid before any call
 
@@ -89,11 +105,11 @@ for f in "$@"; do
         printf '%s' "$w" > "$tmp/body.json"
         gh api -X POST "repos/$repo/rulesets" --input "$tmp/body.json" --silent
       fi
-    elif [ "$w" = "$h" ]; then
+    elif [ "$(view <<<"$w")" = "$(view <<<"$h")" ]; then
       echo "$name/$rn: unchanged"
     else
       echo "$name/$rn: update"; drift=1
-      diff <(jq -S . <<<"$h") <(jq -S . <<<"$w") | sed 's/^/    /' || true
+      diff <(view <<<"$h" | jq -S .) <(view <<<"$w" | jq -S .) | sed 's/^/    /' || true
       if [ "$cmd" = apply ]; then
         id="$(jq -r --arg n "$rn" '.[] | select(.name == $n) | .id' <<<"$l")"
         printf '%s' "$w" > "$tmp/body.json"

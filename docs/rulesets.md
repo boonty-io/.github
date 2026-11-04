@@ -49,5 +49,9 @@ applied; re-running converges, since an unchanged ruleset is left alone.
 The App's write token can change any ruleset in the org. Its key lives only
 in the `rulesets` environment of this repository, which only `main` can use,
 and `main` is itself protected (`rulesets/repos/.github.json`: PR, one
-approval, required checks). Plans ask the App for Administration: read only;
-apply (push to `main`, or a dispatch from `main`) asks for write.
+approval, required checks). A PR plan asks the App for Administration: read
+only; every other run (apply, the daily plan, a dispatch, all from `main`)
+asks for write. GitHub shows a ruleset's bypass actors only to a token that
+can write it, so a PR plan leaves bypass actors out of the comparison
+(`RULESETS_SKIP_BYPASS=1`, which `apply` refuses) and says so in its output;
+the daily plan compares them. `plan` never writes, whatever its token.

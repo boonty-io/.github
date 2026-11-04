@@ -93,5 +93,24 @@ if [ "$rc" = 0 ] && ! grep -q 'update\|create\|unmanaged' "$T/out"; then ok "exp
 rc=$(run nope)
 if [ "$rc" = 64 ]; then ok "usage error"; else ko "usage error (rc=$rc)"; fi
 
+# 11. a bypass-actor change alone is drift with a token that can read them
+rc=$(run plan boonty-io "$(desired desired-bypass-only.json)")
+if [ "$rc" = 2 ] && grep -qx 'demo/Main: update' "$T/out" && grep -q '"actor_id": 7' "$T/out"; then ok "bypass-actor change is drift"; else ko "bypass-actor drift (rc=$rc)"; fi
+
+# 12. RULESETS_SKIP_BYPASS=1 (a read-only token, which GitHub shows no bypass
+#     actors): plan leaves them out of both sides, says so, and reports no drift
+rc=$(RULESETS_SKIP_BYPASS=1 run plan boonty-io "$(desired desired-bypass-only.json)")
+if [ "$rc" = 0 ] && grep -qx 'demo/Main: unchanged' "$T/out" && grep -q '^note: bypass actors are not compared' "$T/out" \
+   && ! grep -q 'bypass_actors' "$T/out"; then ok "skip-bypass plan ignores bypass actors and says so"; else ko "skip-bypass plan (rc=$rc)"; fi
+
+# 12b. other drift is still reported under RULESETS_SKIP_BYPASS=1
+rc=$(RULESETS_SKIP_BYPASS=1 run plan boonty-io "$(desired desired-update-only.json)")
+if [ "$rc" = 2 ] && grep -qx 'demo/Staging: update' "$T/out"; then ok "skip-bypass plan still reports other drift"; else ko "skip-bypass other drift (rc=$rc)"; fi
+
+# 13. apply refuses RULESETS_SKIP_BYPASS=1 before any call: its PUT body would
+#     carry no bypass actors and clear them
+rc=$(RULESETS_SKIP_BYPASS=1 run apply boonty-io "$(desired desired.json)")
+if [ "$rc" = 64 ] && [ ! -s "$LOG" ]; then ok "apply refuses skip-bypass"; else ko "apply skip-bypass (rc=$rc)"; fi
+
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]
