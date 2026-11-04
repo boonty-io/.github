@@ -32,9 +32,9 @@ Waiting for status to be reported", with nothing to click: a suite posts its
 `ci/*` status only when it ends. A consumer that opts in gets, per context it
 lists:
 
-- on a new head that is not a request: PENDING "Not run yet: mark the PR
-  ready, add the ci:run label or comment /ci", linking here. It never
-  overwrites a status already on the head;
+- on a new head that is not a request: PENDING "Not run yet: add the ci:run
+  label or comment /ci" (on a draft, "mark the PR ready, " comes first),
+  linking here. It never overwrites a status already on the head;
 - on a full request (label, `/ci`, PR marked ready): PENDING "Requested:
   running", linking the head branch's dispatched runs, so the line is
   clickable while the suite runs. It never overwrites a status posted after
@@ -55,6 +55,13 @@ on:
     types: [labeled, opened, reopened, synchronize, ready_for_review]
   issue_comment:
     types: [created]
+# A group keeps one pending run, so hint-only events (a draft opened, reopened,
+# pushed to) queue apart from requests: otherwise a push behind a queued
+# `ci:run` replaces it. Hints cancel each other and never touch a request.
+# The hint predicate appears twice (group, cancel-in-progress): keep them identical.
+concurrency:
+  group: ci-request-${{ github.event.pull_request.number || github.event.issue.number }}-${{ (github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'opened' && github.event.pull_request.draft))) && 'hint' || 'request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'opened' && github.event.pull_request.draft)) }}
 jobs:
   request:
     uses: boonty-io/.github/.github/workflows/ci-request.yml@main
@@ -70,7 +77,10 @@ jobs:
 
 The guard accepts exactly `[labeled]` (label and `/ci` only: no auto-run on
 ready, no hint) or that five-type set, and with the latter requires one
-`ci-hint.yml` job with `contexts` and `statuses: write`. A consumer still on
+`ci-hint.yml` job with `contexts`, `statuses: write`, `contents: read` and
+`pull-requests: read`. If it sets a workflow `concurrency`, the group must
+split on `github.event.action` into `'hint'` and `'request'`, and
+`cancel-in-progress` must not be a bare `true`. A consumer still on
 `[labeled]` keeps working unchanged.
 
 `/ci` alone dispatches every listed suite; `/ci tests.yml` dispatches one. A

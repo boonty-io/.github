@@ -114,8 +114,28 @@ def main(root):
             else:
                 if not str((hints[0].get("with") or {}).get("contexts") or "").strip():
                     err("ci-request.yml", "calls ci-hint.yml with no `contexts` — the hint would post nothing")
-                if (hints[0].get("permissions") or {}).get("statuses") != "write":
-                    err("ci-request.yml", "the ci-hint.yml job lacks `statuses: write`")
+                hperms = hints[0].get("permissions")
+                if not isinstance(hperms, dict):
+                    err("ci-request.yml", "the ci-hint.yml job must list its permissions (contents: read, pull-requests: read, statuses: write)")
+                    hperms = {}
+                for scope, level in (("statuses", "write"), ("contents", "read"), ("pull-requests", "read")):
+                    if hperms and hperms.get(scope) != level:
+                        err("ci-request.yml", f"the ci-hint.yml job lacks `{scope}: {level}`")
+            # A group keeps one pending run: a hint (every push) sharing the
+            # request's group would replace a queued request (docs, "Opt-in").
+            # Heuristic, not a proof: the group must at least branch on the
+            # event action into 'hint' and 'request', and never cancel blindly.
+            blocks = [("workflow", req.get("concurrency"))] + [
+                (f"job `{n}`", (j or {}).get("concurrency")) for n, j in (req.get("jobs") or {}).items()]
+            for where, conc in blocks:
+                if conc is None:
+                    continue
+                group = str(conc.get("group", "")) if isinstance(conc, dict) else str(conc)
+                if not ("github.event.action" in group and "'hint'" in group and "'request'" in group):
+                    err("ci-request.yml", f"{where}: one concurrency group for hints and requests — a push would replace a pending request; split on github.event.action ('hint' / 'request')")
+                cancel = conc.get("cancel-in-progress") if isinstance(conc, dict) else None
+                if re.fullmatch(r"\s*(true|\$\{\{\s*true\s*\}\})\s*", str(cancel), re.I):
+                    err("ci-request.yml", f"{where}: concurrency `cancel-in-progress: true` cancels a pending request on every push — cancel hint runs only")
         elif hints:
             err("ci-request.yml", f"calls ci-hint.yml but pull_request types are not {HINT_TYPES}")
 

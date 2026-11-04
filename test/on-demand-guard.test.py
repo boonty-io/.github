@@ -163,6 +163,50 @@ class Guard(unittest.TestCase):
     def test_hint_without_statuses_write(self):
         self.refuses(self.hinted(self.HINT_JOB.replace("      statuses: write\n", "")), "lacks `statuses: write`")
 
+    # The documented block, read from docs/on-demand-ci.md so the two cannot drift.
+    with open(os.path.join(HERE, "..", "docs", "on-demand-ci.md")) as _f:
+        _doc = _f.read()
+    SPLIT = _doc[_doc.index("concurrency:\n  group: ci-request-"):]
+    SPLIT = SPLIT[:SPLIT.index("\njobs:") + 1]
+
+    def concurrent(self, block):
+        files = self.hinted()
+        assert "permissions: {}\n" in files["ci-request.yml"]
+        files["ci-request.yml"] = files["ci-request.yml"].replace("permissions: {}\n", block + "permissions: {}\n", 1)
+        return files
+
+    def test_hint_with_split_concurrency_passes(self):
+        code, out = run(self.concurrent(self.SPLIT))
+        self.assertEqual(code, 0, out)
+
+    def test_hint_with_one_concurrency_group(self):
+        self.refuses(self.concurrent("concurrency:\n  group: ci-request-${{ github.event.pull_request.number }}\n"),
+                     "one concurrency group for hints and requests")
+
+    def test_hint_with_unconditional_cancel(self):
+        cancel = next(l for l in self.SPLIT.splitlines() if l.startswith("  cancel-in-progress:"))
+        for bad in ("true", "'true'", "${{ true }}"):
+            self.refuses(self.concurrent(self.SPLIT.replace(cancel, "  cancel-in-progress: " + bad)), "cancels a pending request")
+
+    def test_hint_with_string_concurrency(self):
+        self.refuses(self.concurrent("concurrency: ci-request-${{ github.event.pull_request.number }}\n"),
+                     "one concurrency group for hints and requests")
+
+    def test_hint_with_one_job_level_concurrency_group(self):
+        files = self.hinted()
+        files["ci-request.yml"] = files["ci-request.yml"].replace(
+            "  request:\n", "  request:\n    concurrency: ci-request-${{ github.event.pull_request.number }}\n", 1)
+        self.refuses(files, "one concurrency group for hints and requests")
+
+    def test_hint_with_permissions_shorthand(self):
+        self.refuses(self.hinted(self.HINT_JOB.replace(
+            "    permissions:\n      contents: read\n      pull-requests: read\n      statuses: write\n",
+            "    permissions: write-all\n")), "the ci-hint.yml job must list its permissions")
+
+    def test_hint_without_read_scopes(self):
+        self.refuses(self.hinted(self.HINT_JOB.replace("      pull-requests: read\n", "")), "lacks `pull-requests: read`")
+        self.refuses(self.hinted(self.HINT_JOB.replace("      contents: read\n", "")), "lacks `contents: read`")
+
     def test_hint_job_with_label_only_types(self):
         files = good(); files["ci-request.yml"] += self.HINT_JOB
         self.refuses(files, "calls ci-hint.yml but pull_request types are not")
