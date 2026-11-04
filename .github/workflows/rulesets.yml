@@ -11,7 +11,10 @@
 # The App key reaches only code on `main`. A PR is planned with
 # pull_request_target: this workflow and scripts/rulesets.sh come from `main`,
 # and only the PR's rulesets/repos/*.json is taken from its head, as data that
-# jq parses. Its token asks for Administration: read only. The `rulesets`
+# jq parses. Its token asks for Administration: read only, which GitHub shows
+# no bypass actors, so a PR plan leaves them out (RULESETS_SKIP_BYPASS=1) and
+# says so. Every other run is `main`'s own code and asks for write, so the
+# scheduled plan also catches a bypass actor edited by hand. The `rulesets`
 # environment is restricted to `main` (docs/rulesets.md), so a workflow edited
 # on a branch cannot reach the key at all.
 #
@@ -80,13 +83,14 @@ jobs:
           app-id: ${{ secrets.RULESETS_APP_ID }}
           private-key: ${{ secrets.RULESETS_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          permission-administration: ${{ (github.event_name == 'push' || inputs.mode == 'apply') && 'write' || 'read' }}
+          permission-administration: ${{ github.event_name == 'pull_request_target' && 'read' || 'write' }}
 
       - name: Plan or apply
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           MODE: ${{ (github.event_name == 'push' || inputs.mode == 'apply') && 'apply' || 'plan' }}
           OWNER: ${{ github.repository_owner }}
+          RULESETS_SKIP_BYPASS: ${{ github.event_name == 'pull_request_target' && '1' || '' }}
         run: |
           set -uo pipefail
           rc=0
