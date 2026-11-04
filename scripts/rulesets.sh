@@ -21,6 +21,8 @@
 # RULESETS_SKIP_BYPASS=1 to plan with such a token: bypass actors are then
 # left out of both sides and the output says so. apply refuses it, since its
 # request bodies would then carry no bypass actors and clear them.
+# For the same reason, export with a read-only token writes every ruleset
+# with no bypass actors: export with a token that can write rulesets.
 set -euo pipefail
 
 usage() { echo "usage: $0 plan|apply <owner> <file>... | export <owner/repo>" >&2; exit 64; }
