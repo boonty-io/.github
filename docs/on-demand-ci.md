@@ -1,6 +1,6 @@
 # On-demand CI
 
-CI runs once per pull request when it is requested, once more in the merge
+CI runs on a pull request when it is requested or once it is ready for review,
 queue, and never on a plain push. This document is the contract every
 `boonty-io` repository follows; `.github/workflows/ci-request.yml` in this
 repository implements the request half.
@@ -9,17 +9,18 @@ repository implements the request half.
 
 | Event | What runs | Where |
 | --- | --- | --- |
-| push to a feature branch / PR sync | nothing | — |
+| push to a branch without a PR | nothing | — |
 | PR labelled `ci:run`, or `/ci` comment by an org member | every suite workflow the repo lists | dispatched on the PR head |
-| PR marked ready for review, or opened as non-draft (five-type trigger set only) | every suite, unless this head was already dispatched | dispatched on the PR head |
-| PR opened as draft, reopened, or pushed to | no suite — with `ci-hint.yml`, a pending "Not run yet" line per required context | — |
+| PR marked ready for review, or opened, reopened or pushed to while non-draft (five-type trigger set only) | every suite, unless this head was already dispatched | dispatched on the PR head |
+| draft PR opened, reopened, or pushed to | no suite — with `ci-hint.yml`, a pending "Not run yet" line per required context | — |
 | `merge_group` | every suite once more before landing | merge queue |
 | push to `staging` / `main` | build / deploy workflows only | — |
 | `workflow_dispatch` | any single suite, by hand | — |
 
 Drafts never run on their own: a PR is marked ready when it is ready to be
-reviewed, and that is when CI runs (consumers on the five-type trigger set
-below). Marking a draft ready after its head was already requested (the AI
+reviewed, and from then on CI runs on every new head, so a rebase onto a
+moved base or a fix pushed after review is tested without a label (consumers
+on the five-type trigger set below). Marking a draft ready after its head was already requested (the AI
 flow flips to ready once green) does not run it twice: the request is skipped
 when the head sha already has a `workflow_dispatch` run, finished or not. A
 failed head is not re-run by flipping; request it again. Dependabot and fork
@@ -35,7 +36,7 @@ lists:
 - on a new head that is not a request: PENDING "Not run yet: add the ci:run
   label or comment /ci" (on a draft, "mark the PR ready, " comes first),
   linking here. It never overwrites a status already on the head;
-- on a full request (label, `/ci`, PR marked ready): PENDING "Requested:
+- on a full request (label, `/ci`, PR marked ready, new head on a ready PR): PENDING "Requested:
   running", linking the head branch's dispatched runs, so the line is
   clickable while the suite runs. It never overwrites a status posted after
   the request, and on "ready" never a real verdict (nothing is dispatched for

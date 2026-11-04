@@ -117,7 +117,8 @@ jobs:
             enc_ref="$(jq -rn --arg r "$ref" '$r | @uri')"
             url="https://github.com/$GITHUB_REPOSITORY/actions?query=event%3Aworkflow_dispatch+branch%3A$enc_ref"
           else
-            # Marking ready auto-runs only from a draft; a ready PR's push needs a request.
+            # A hint is posted for drafts (a ready PR's new head is a request), and for
+            # a caller still on `[labeled]`, where a ready PR's push needs a request.
             ready_hint=""
             if [ "$(jq -r .isDraft pr.json)" = "true" ]; then ready_hint="mark the PR ready, "; fi
             state_desc="Not run yet: ${ready_hint}add the $LABEL label or comment $COMMAND"

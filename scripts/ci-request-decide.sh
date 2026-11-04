@@ -17,11 +17,12 @@
 #   1. `pull_request` / `labeled` where the label is $CI_LABEL (default `ci:run`).
 #   2. `issue_comment` / `created` on a pull request whose body is `/ci` or
 #      `/ci <workflows>` and whose author is OWNER, MEMBER or COLLABORATOR.
-#   3. `pull_request` / `ready_for_review`, or `opened` as a non-draft: the PR
-#      is ready to be reviewed, so CI runs without anyone asking. Drafts never
-#      run on their own — that is the spend this model removes.
+#   3. `pull_request` / `ready_for_review`, or `opened`, `reopened` or
+#      `synchronize` on a non-draft PR: the PR is ready to be reviewed, so CI
+#      runs on every new head without anyone asking. Drafts never run on their
+#      own — that is the spend this model removes.
 #
-# `opened` (draft), `reopened` and `synchronize` are not requests: they give
+# `opened`, `reopened` and `synchronize` on a draft are not requests: they give
 # hint=true. Dependabot and fork PRs are skipped for 3 and for the hint: their
 # token is read-only, so the dispatch and the status would fail.
 #
@@ -63,7 +64,11 @@ case "$event_name" in
         head_repo="$(jq -r '.pull_request.head.repo.full_name // ""' "$event_path")"
         base_repo="$(jq -r '.repository.full_name // ""' "$event_path")"
         [ -z "$head_repo" ] || [ "$head_repo" = "$base_repo" ] || no "pull request from a fork: its token is read-only"
-        if [ "$action" = "ready_for_review" ] || { [ "$action" = "opened" ] && [ "$draft" = "false" ]; }; then
+        # Any of these on a non-draft PR is a request: marked ready, opened
+        # ready, reopened, or a new head pushed after it was ready (a rebase
+        # onto a moved base, or a fix). ci-request.yml skips a head that
+        # already has a dispatched run, so a re-delivered event costs nothing.
+        if [ "$action" = "ready_for_review" ] || [ "$draft" = "false" ]; then
           echo "go=true"
           echo "pr=${pr}"
           echo "source=ready"
@@ -73,7 +78,7 @@ case "$event_name" in
         echo "go=false"
         echo "hint=true"
         echo "pr=${pr}"
-        printf 'reason=%s\n' "pull_request ${action} is not a request (draft or new head): hint only"
+        printf 'reason=%s\n' "pull_request ${action} on a draft is not a request: hint only"
         exit 0
         ;;
       *) no "pull_request action is '${action}', not a request" ;;
