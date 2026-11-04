@@ -1,6 +1,6 @@
 # On-demand CI
 
-CI runs on a pull request when it is requested or once it is ready for review,
+CI runs on a pull request when it is requested or ready for review, once more in the merge
 queue, and never on a plain push. This document is the contract every
 `boonty-io` repository follows; `.github/workflows/ci-request.yml` in this
 repository implements the request half.
