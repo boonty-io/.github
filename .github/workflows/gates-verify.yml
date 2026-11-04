@@ -111,15 +111,19 @@ jobs:
           jq -r '.[] | select((.body // "") | startswith("boonty-gates/v1")) | .user.login' comments.json | sort -u |
             while IFS= read -r login; do
               [[ "$login" =~ ^[A-Za-z0-9-]+(\[bot\])?$ ]] || continue
-              perm="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$login/permission" --jq .permission 2>/dev/null)" || continue
+              perm="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$login/permission" --jq .permission 2>/dev/null)" || {
+                echo "::warning title=gates-verify::could not read ${login}'s permission; their receipt is not trusted on this run"
+                continue
+              }
               case "$perm" in admin|maintain|write) echo "$login" >> writers.txt ;; esac
             done
           shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$content" | tee -a "$GITHUB_OUTPUT"
 
-      # always(): a Decide step that errors must not leave an earlier
-      # `success` standing on this head.
+      # !cancelled(): a Decide step that errors must not leave an earlier
+      # `success` standing on this head; a run superseded by a newer one posts
+      # nothing, so it cannot race that run's verdict.
       - name: Post gates/verified
-        if: always() && steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != ''
+        if: ${{ !cancelled() && steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ steps.pr.outputs.head }}

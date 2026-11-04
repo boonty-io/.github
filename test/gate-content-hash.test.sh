@@ -15,9 +15,12 @@ check() { n=$((n + 1)); if [ "$2" = "$3" ]; then echo "✓ $1"; else echo "✗ $
 h0="$("$sut" "$t" main HEAD)"
 check "is a sha256" "$(printf "%s" "$h0" | grep -cE "^[0-9a-f]{64}$")" 1; [[ "$h0" =~ ^[0-9a-f]{64}$ ]] || { echo "cannot hash the fixture"; exit 1; }
 # the developer's git config does not change it
-for c in diff.noprefix=true diff.context=7 diff.algorithm=histogram diff.mnemonicPrefix=true color.diff=always diff.renames=copies core.abbrev=12; do
+for c in diff.noprefix=true diff.context=7 diff.algorithm=histogram diff.mnemonicPrefix=true color.diff=always diff.renames=copies core.abbrev=12 diff.interHunkContext=10 core.quotePath=false; do
   check "config $c ignored" "$(git -C "$t" config "${c%%=*}" "${c#*=}" && "$sut" "$t" main HEAD; git -C "$t" config --unset "${c%%=*}")" "$h0"
 done
+# repo-local attributes and GIT_DIFF_OPTS do not change it either
+printf 'f.py -diff\n' > "$t/.git/info/attributes"; check "info/attributes ignored" "$("$sut" "$t" main HEAD)" "$h0"; rm "$t/.git/info/attributes"
+check "GIT_DIFF_OPTS ignored" "$(GIT_DIFF_OPTS=-u7 "$sut" "$t" main HEAD)" "$h0"
 # a whitespace-only change does change it (patch-id --stable would not)
 g checkout -b ws; { seq 1 15; printf 'if x:\n  c()\n'; seq 16 30; } > "$t/f.py"; g commit -am ws
 [ "$("$sut" "$t" main HEAD)" != "$h0" ]; check "whitespace change detected" $? 0

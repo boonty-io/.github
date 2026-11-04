@@ -26,18 +26,20 @@ has to stay alive for it, and nobody has to reach the queue orchestrator.
 
 **When the base moves.** `gh pr update-branch --rebase` gives the PR a new
 head. Its CI re-runs on its own. `gates/verified` stays green when the base
-moved only on files the diff does not touch: the pinned diff, both blob ids of
-every file included, is then byte-identical. If the base touched a file the
+moved only on files the diff does not touch: every diffed file then has the
+same two blob ids, so the hash is identical. If the base touched a file the
 diff touches, the hash changes, the status turns red and the gates must run
 again. This is close to the local patch-receipt rule but weaker in one way:
 locally `claim-verifier` re-runs even on a disjoint base move, here nothing
 re-runs.
 
 **The hash.** Both sides run `scripts/gate-content-hash.sh` (ai-config's
-`gate publish` runs the same command). Every diff option that changes the text
-is pinned and global git config is ignored, so a developer's `diff.noprefix`
-or `diff.context` does not make their receipt unmatchable. Unlike
-`git patch-id --stable`, it does not ignore whitespace.
+`gate publish` runs the same command): the sha256 of
+`git diff-tree -r -z --full-index --no-renames` over merge-base..head, that is
+each diffed file's modes, full blob ids, status and path. Nothing is rendered
+as text, so no diff option, git config, attribute or `GIT_DIFF_OPTS` can make
+a developer's receipt unmatchable. Unlike `git patch-id --stable`, it does not
+ignore whitespace.
 
 **Trust.** The receipt is as trustworthy as today's local receipt files: a
 person with write access could forge either. What changes is where it is
