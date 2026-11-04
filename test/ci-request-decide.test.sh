@@ -25,8 +25,12 @@ expect() {
 expect pull_request labeled-ci-run.json 'go=true,pr=42,source=label'
 # 2. any other label → nothing (this is the case a `types: [labeled]` suite would have turned green-by-skip)
 expect pull_request labeled-other.json 'go=false'
-# 3. a new head is not a request: no run, only the "how to run CI" hint
+# 3. a new head on a draft is not a request: no run, only the "how to run CI" hint
 expect pull_request synchronize.json 'go=false,hint=true,pr=42'
+# 3b. a new head on a PR that is ready for review runs CI (a rebase or a fix after the gates)
+expect pull_request synchronize-ready.json 'go=true,pr=42,source=ready,workflows='
+# 3c. reopening a ready PR runs CI too
+expect pull_request reopened-ready.json 'go=true,pr=42,source=ready'
 # 4. a custom label name is honoured
 expect pull_request labeled-other.json 'go=true,pr=42' 'dependencies'
 # 5. `/ci` from a member on a PR → go, no workflow override
@@ -76,6 +80,14 @@ if printf '%s\n' "$out" | grep -qx 'go=false' && ! printf '%s\n' "$out" | grep -
   echo "✓ [pull_request/closed.json] go=false, no hint"
 else
   echo "✗ [pull_request/closed.json] expected go=false and no hint, got:"; printf '%s\n' "$out" | sed 's/^/    /'; fail=$((fail + 1))
+fi
+# 21. Dependabot pushing to a ready PR: read-only token, neither a run nor a hint
+n=$((n + 1))
+out="$(GITHUB_EVENT_NAME=pull_request "$decide" "$here/fixtures/synchronize-dependabot.json")"
+if printf '%s\n' "$out" | grep -qx 'go=false' && ! printf '%s\n' "$out" | grep -q '^hint='; then
+  echo "✓ [pull_request/synchronize-dependabot.json] go=false, no hint"
+else
+  echo "✗ [pull_request/synchronize-dependabot.json] expected go=false and no hint, got:"; printf '%s\n' "$out" | sed 's/^/    /'; fail=$((fail + 1))
 fi
 # 14. a label name carrying a newline cannot start a second output line
 n=$((n + 1))

@@ -1,0 +1,1 @@
+{"id":14,"name":"Legacy","target":"branch","enforcement":"disabled","source_type":"Repository","conditions":{"ref_name":{"exclude":[],"include":["refs/heads/old"]}},"bypass_actors":[],"rules":[{"type":"deletion"}]}

@@ -1,0 +1,177 @@
+[
+  {
+    "name": "Main",
+    "target": "branch",
+    "enforcement": "active",
+    "conditions": {
+      "ref_name": {
+        "exclude": [],
+        "include": [
+          "refs/heads/main"
+        ]
+      }
+    },
+    "bypass_actors": [
+      {
+        "actor_id": null,
+        "actor_type": "EnterpriseOwner",
+        "bypass_mode": "always"
+      },
+      {
+        "actor_id": null,
+        "actor_type": "OrganizationAdmin",
+        "bypass_mode": "always"
+      },
+      {
+        "actor_id": 5,
+        "actor_type": "RepositoryRole",
+        "bypass_mode": "always"
+      }
+    ],
+    "rules": [
+      {
+        "type": "deletion"
+      },
+      {
+        "type": "non_fast_forward"
+      },
+      {
+        "type": "pull_request",
+        "parameters": {
+          "required_approving_review_count": 0,
+          "dismiss_stale_reviews_on_push": false,
+          "required_reviewers": [],
+          "require_code_owner_review": false,
+          "dismissal_restriction": {
+            "enabled": false,
+            "allowed_actors": []
+          },
+          "require_last_push_approval": false,
+          "required_review_thread_resolution": true,
+          "require_extra_approval_for_unattributed_changes": true,
+          "allowed_merge_methods": [
+            "merge",
+            "squash",
+            "rebase"
+          ]
+        }
+      },
+      {
+        "type": "required_status_checks",
+        "parameters": {
+          "strict_required_status_checks_policy": true,
+          "do_not_enforce_on_create": false,
+          "required_status_checks": [
+            {
+              "context": "Vercel",
+              "integration_id": 8329
+            },
+            {
+              "context": "ci/build",
+              "integration_id": 15368
+            },
+            {
+              "context": "ci/e2e",
+              "integration_id": 15368
+            },
+            {
+              "context": "ci/security",
+              "integration_id": 15368
+            },
+            {
+              "context": "ci/unit",
+              "integration_id": 15368
+            },
+            {
+              "context": "ci/verify",
+              "integration_id": 15368
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Staging",
+    "target": "branch",
+    "enforcement": "active",
+    "conditions": {
+      "ref_name": {
+        "exclude": [],
+        "include": [
+          "refs/heads/staging"
+        ]
+      }
+    },
+    "bypass_actors": [
+      {
+        "actor_id": 5,
+        "actor_type": "RepositoryRole",
+        "bypass_mode": "always"
+      }
+    ],
+    "rules": [
+      {
+        "type": "deletion"
+      },
+      {
+        "type": "pull_request",
+        "parameters": {
+          "required_approving_review_count": 0,
+          "dismiss_stale_reviews_on_push": false,
+          "required_reviewers": [],
+          "require_code_owner_review": false,
+          "dismissal_restriction": {
+            "enabled": false,
+            "allowed_actors": []
+          },
+          "require_last_push_approval": false,
+          "required_review_thread_resolution": true,
+          "require_extra_approval_for_unattributed_changes": true,
+          "allowed_merge_methods": [
+            "merge",
+            "squash",
+            "rebase"
+          ]
+        }
+      },
+      {
+        "type": "required_status_checks",
+        "parameters": {
+          "strict_required_status_checks_policy": true,
+          "do_not_enforce_on_create": false,
+          "required_status_checks": [
+            {
+              "context": "Vercel",
+              "integration_id": 8329
+            },
+            {
+              "context": "ci/build",
+              "integration_id": 15368
+            },
+            {
+              "context": "ci/e2e",
+              "integration_id": 15368
+            },
+            {
+              "context": "ci/security",
+              "integration_id": 15368
+            },
+            {
+              "context": "ci/unit",
+              "integration_id": 15368
+            },
+            {
+              "context": "ci/verify",
+              "integration_id": 15368
+            },
+            {
+              "context": "docs-impact / check",
+              "integration_id": 15368
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,138 @@
+# gates-verify — post the `gates/verified` commit status on a pull request head.
+#
+# Reusable (`workflow_call`). A consumer calls it from a short
+# `.github/workflows/gates-verify.yml` (docs/merge-by-github.md):
+#
+#   pull_request_target / opened, reopened, synchronize, ready_for_review, edited
+#   issue_comment / created, edited   (only a comment starting with the marker)
+#
+# The status is `success` when the last-written gate receipt comment (posted by
+# `boonty-ai gate publish`) from someone with write access shows the four
+# Phase 5 gates passing against the PR's current base for the SAME diff as the
+# head: scripts/gate-content-hash.sh over merge-base..head. A rebase onto a
+# base that touched none of the diff's files keeps the verdict without
+# re-running any gate, so a required `gates/verified` plus auto-merge lets
+# GitHub land the PR once the `ci/*` checks are green, with no session in the
+# loop.
+#
+# Both triggers run the caller from the default branch, never from the PR, so
+# a PR cannot change this workflow's decision (it could still add a workflow of
+# its own that posts the context: docs/merge-by-github.md, "Trust"). The PR head is checked out only
+# to take its diff; nothing from it is executed. The decision is
+# `scripts/gates-verify.sh` (tested by `test/gates-verify.test.sh`). The status
+# is posted with github.token, so GitHub attributes it to GitHub Actions
+# (integration 15368), and the ruleset pins the context to that App.
+name: gates-verify
+
+on:
+  workflow_call:
+    inputs:
+      shared_ref:
+        description: Ref of boonty-io/.github to take the decision script from. Pin to a branch only while testing that branch.
+        required: false
+        default: main
+        type: string
+
+permissions: {}
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read        # the PR head, to hash its diff
+      pull-requests: read   # gh pr view, the PR's comments
+      statuses: write       # gates/verified
+    steps:
+      - name: Resolve the pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+          IS_PR: ${{ github.event_name == 'pull_request_target' || github.event.issue.pull_request != null }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_PR" != true ] || [ -z "$PR" ]; then
+            echo "::notice title=gates-verify::not a pull request — nothing to verify"
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,baseRefName,state > pr.json
+          if [ "$(jq -r .state pr.json)" != OPEN ]; then
+            echo "::notice title=gates-verify::PR #$PR is not open"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          {
+            echo "skip=false"
+            echo "pr=$PR"
+            echo "head=$(jq -r .headRefOid pr.json)"
+            echo "base=$(jq -r .baseRefName pr.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out the decision script
+        if: steps.pr.outputs.skip == 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: boonty-io/.github
+          ref: ${{ inputs.shared_ref }}
+          path: shared
+          sparse-checkout: |
+            scripts/gates-verify.sh
+            scripts/gate-content-hash.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Check out the PR head (read only, nothing from it runs)
+        if: steps.pr.outputs.skip == 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.pr.outputs.head }}
+          path: head
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Decide
+        id: decide
+        if: steps.pr.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.pr.outputs.pr }}
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
+          BASE: ${{ steps.pr.outputs.base }}
+        run: |
+          set -euo pipefail
+          # The same hash `boonty-ai gate publish` stores as content_sha256.
+          # Empty when it cannot be taken, which the decision turns into a
+          # failure, never a pass.
+          content="$(shared/scripts/gate-content-hash.sh head "origin/$BASE" "$HEAD_SHA")" || content=""
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq '.[]' | jq -s . > comments.json
+          # Receipt authors who can push to this repository. author_association
+          # is not enough: MEMBER is any org member, COLLABORATOR may be read-only.
+          : > writers.txt
+          jq -r '.[] | select((.body // "") | startswith("boonty-gates/v1")) | .user.login' comments.json | sort -u |
+            while IFS= read -r login; do
+              [[ "$login" =~ ^[A-Za-z0-9-]+(\[bot\])?$ ]] || continue
+              perm="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$login/permission" --jq .permission 2>/dev/null)" || {
+                echo "::warning title=gates-verify::could not read ${login}'s permission; their receipt is not trusted on this run"
+                continue
+              }
+              case "$perm" in admin|maintain|write) echo "$login" >> writers.txt ;; esac
+            done
+          shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$content" | tee -a "$GITHUB_OUTPUT"
+
+      # !cancelled(): a Decide step that errors must not leave an earlier
+      # `success` standing on this head; a run superseded by a newer one posts
+      # nothing, so it cannot race that run's verdict.
+      - name: Post gates/verified
+        if: ${{ !cancelled() && steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
+          STATE: ${{ steps.decide.outputs.state || 'failure' }}
+          DESCRIPTION: ${{ steps.decide.outputs.description || 'gates-verify could not decide; see the run' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state="$STATE" -f context=gates/verified \
+            -f description="$DESCRIPTION" -f target_url="$RUN_URL" --silent
+          echo "gates/verified=$STATE on $HEAD_SHA: $DESCRIPTION"
