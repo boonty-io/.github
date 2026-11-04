@@ -10,9 +10,10 @@
 #   state=success|failure|pending
 #   description=<one line, at most 140 characters>
 #
-# The receipt is the NEWEST comment that carries the `<!-- boonty-gates v1 -->`
-# marker and was written by an OWNER, MEMBER or COLLABORATOR (people who can
-# push, so who could already write a gate receipt by hand). Its fenced json
+# The receipt is the NEWEST comment that carries the plain-text
+# `boonty-gates/v1` marker (not an HTML comment: some write paths escape `<`)
+# and was written by an OWNER, MEMBER or COLLABORATOR (people who can push,
+# so who could already write a gate receipt by hand). Its fenced json
 # block is `{"v":1,"sha":…,"diff_hash":…,"gates":{<gate>:"pass"|"fail"}}`,
 # posted by `boonty-ai gate publish` once the four Phase 5 gates pass.
 #
@@ -25,7 +26,7 @@
 set -euo pipefail
 comments="${1:?comments.json}"; patch_id="${2-}"
 GATES="architecture-reviewer code-review security claim-verifier"
-MARKER='<!-- boonty-gates v1 -->'
+MARKER='boonty-gates/v1'
 
 out() { # out <state> <description>
   echo "state=$1"

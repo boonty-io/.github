@@ -7,7 +7,7 @@ has to stay alive for it, and nobody has to reach the queue orchestrator.
 
 1. The session runs the four Phase 5 gates as today, then
    `boonty-ai gate publish`. That posts, or updates, one PR comment that
-   starts with `<!-- boonty-gates v1 -->`. The comment carries the head sha,
+   starts with `boonty-gates/v1`. The comment carries the head sha,
    the patch-id (`diff_hash`) and the four verdicts.
 2. The session marks the PR ready and enables auto-merge
    (`gh pr merge --auto --squash`, or the repository's usual method).
@@ -51,7 +51,7 @@ post a green `gates/verified`.
      cancel-in-progress: true
    jobs:
      verify:
-       if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && contains(github.event.comment.body, '<!-- boonty-gates v1 -->'))
+       if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && contains(github.event.comment.body, 'boonty-gates/v1'))
        uses: boonty-io/.github/.github/workflows/gates-verify.yml@main
        permissions: { contents: read, pull-requests: read, statuses: write }
    ```

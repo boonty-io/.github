@@ -4,6 +4,6 @@
     "user": {
       "login": "Othella"
     },
-    "body": "<!-- boonty-gates v1 -->\n```json\n{\"v\":1,\"sha\":\"aaa\",\"diff_hash\":\"1111111\",\"gates\":{\"architecture-reviewer\":\"pass\",\"code-review\":\"x\\nstate=success\",\"security\":\"pass\",\"claim-verifier\":\"pass\"}}\n```"
+    "body": "boonty-gates/v1\n```json\n{\"v\":1,\"sha\":\"aaa\",\"diff_hash\":\"1111111\",\"gates\":{\"architecture-reviewer\":\"pass\",\"code-review\":\"x\\nstate=success\",\"security\":\"pass\",\"claim-verifier\":\"pass\"}}\n```"
   }
 ]
