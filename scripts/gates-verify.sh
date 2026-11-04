@@ -1,30 +1,38 @@
 #!/usr/bin/env bash
 # Decide the `gates/verified` commit status of a pull request head.
 #
-#   gates-verify.sh <comments.json> <patch-id>
+#   gates-verify.sh <comments.json> <writers.txt> <base-branch> <content-sha256>
 #
-# <comments.json> is the PR's issue comments as the REST API returns them;
-# <patch-id> is `git patch-id --stable` over merge-base(base, head)..head,
-# computed by the caller. Prints two lines for $GITHUB_OUTPUT:
+# <comments.json>   the PR's issue comments as the REST API returns them.
+# <writers.txt>     logins (one per line) whose permission on the repository
+#                   is write, maintain or admin; the caller asks the API.
+# <base-branch>     the PR's current base branch name.
+# <content-sha256>  sha256 of the pinned diff merge-base(base, head)..head, as
+#                   computed by scripts/gate-content-hash.sh (the same command
+#                   `boonty-ai gate publish` runs).
+#
+# Prints two lines for $GITHUB_OUTPUT:
 #
 #   state=success|failure|pending
 #   description=<one line, at most 140 characters>
 #
-# The receipt is the NEWEST comment that carries the plain-text
-# `boonty-gates/v1` marker (not an HTML comment: some write paths escape `<`)
-# and was written by an OWNER, MEMBER or COLLABORATOR (people who can push,
-# so who could already write a gate receipt by hand). Its fenced json
-# block is `{"v":1,"sha":…,"diff_hash":…,"gates":{<gate>:"pass"|"fail"}}`,
+# The receipt is the most recently written (updated_at) comment whose body
+# STARTS with the plain-text `boonty-gates/v1` marker (not an HTML comment:
+# some write paths escape `<`) and whose author is in <writers.txt>. Its fenced
+# json block is
+#   {"v":1,"sha":…,"base":…,"content_sha256":…,"gates":{<gate>:"pass"|…}}
 # posted by `boonty-ai gate publish` once the four Phase 5 gates pass.
 #
-# success  every gate in GATES is "pass" and diff_hash = <patch-id>. The sha is
-#          not compared: a rebase that leaves the patch unchanged keeps the
-#          verdict, and is exactly the case this exists for.
-# failure  a gate is missing or not "pass", the patch changed since the gates
-#          ran, the receipt is unreadable, or the patch-id is empty.
+# success  every gate in GATES is "pass", the receipt's base is the PR's base,
+#          and content_sha256 equals <content-sha256>. The head sha is not
+#          compared: a rebase onto a base that touched none of the diff's files
+#          leaves the pinned diff, full blob ids included, byte-identical. Any
+#          change to a diffed file, whitespace included, changes the hash.
+# failure  a gate is missing or not "pass", the base or the content changed
+#          since the gates ran, the receipt is unreadable, or the hash is empty.
 # pending  no receipt yet.
 set -euo pipefail
-comments="${1:?comments.json}"; patch_id="${2-}"
+comments="${1:?comments.json}"; writers="${2:?writers.txt}"; base="${3-}"; content="${4-}"
 GATES="architecture-reviewer code-review security claim-verifier"
 MARKER='boonty-gates/v1'
 
@@ -34,28 +42,30 @@ out() { # out <state> <description>
   exit 0
 }
 
-body="$(jq -r --arg m "$MARKER" '
-  [.[] | select((.body // "") | contains($m))
-       | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")]
-  | last | .body // empty' "$comments")"
+body="$(jq -r --arg m "$MARKER" --rawfile w "$writers" '
+  ($w | split("\n") | map(select(length > 0))) as $ok
+  | [.[] | select((.body // "") | startswith($m))
+         | select(.user.login as $l | $ok | index($l))]
+  | sort_by(.updated_at // .created_at // "") | last | .body // empty' "$comments")"
 [ -n "$body" ] || out pending "no gate receipt on this PR yet (boonty-ai gate publish)"
-[ -n "$patch_id" ] || out failure "could not compute the patch-id of this head"
+[[ "$content" =~ ^[0-9a-f]{64}$ ]] || out failure "could not compute the content hash of this head"
 
 json="$(printf '%s\n' "$body" | awk '/^```json[[:space:]]*$/{f=1;next} f&&/^```/{exit} f')"
-receipt="$(printf '%s' "$json" | jq -ce 'select(type == "object" and .v == 1)' 2>/dev/null)" \
+receipt="$(printf '%s' "$json" | jq -ce 'select(type == "object" and .v == 1 and (.gates | type) == "object")' 2>/dev/null)" \
   || out failure "gate receipt comment is unreadable; re-run boonty-ai gate publish"
 
 short_of=""
 for g in $GATES; do
-  v="$(jq -r --arg g "$g" '.gates[$g] // "missing"' <<<"$receipt")"
+  v="$(jq -r --arg g "$g" '.gates[$g] // "missing" | tostring' <<<"$receipt")"
   [ "$v" = pass ] || short_of="${short_of:+$short_of, }$g=$v"
 done
 [ -z "$short_of" ] || out failure "gates not all pass: $short_of"
 
-want="$(jq -r '.diff_hash // ""' <<<"$receipt")"
-# Receipts may carry an abbreviated id; compare on the shorter of the two.
-len=${#want}; [ "${#patch_id}" -lt "$len" ] && len=${#patch_id}
-if [ "$len" -lt 7 ] || [ "${want:0:$len}" != "${patch_id:0:$len}" ]; then
-  out failure "patch changed since the gates ran (receipt ${want:0:12}, head ${patch_id:0:12}); re-gate"
-fi
-out success "4/4 gates pass for this patch (${patch_id:0:12})"
+got_base="$(jq -r '.base // "" | tostring' <<<"$receipt")"
+[ -n "$base" ] && [ "${got_base#origin/}" = "$base" ] \
+  || out failure "gated against base '${got_base}', PR targets '${base}'; re-gate"
+
+want="$(jq -r '.content_sha256 // "" | tostring' <<<"$receipt")"
+[ "$want" = "$content" ] \
+  || out failure "diff changed since the gates ran (receipt ${want:0:12}, head ${content:0:12}); re-gate"
+out success "4/4 gates pass for this diff (${content:0:12})"

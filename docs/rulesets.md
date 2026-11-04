@@ -21,8 +21,10 @@ Organization rulesets and classic branch protection (still used by
 `pos-app-android`) are outside this mechanism.
 
 `scripts/rulesets.sh` is tested by `test/rulesets.test.sh` against a stub
-`gh`. A failed read stops the run before any write, so a GitHub error can never
-look like "no rulesets" and trigger a re-create.
+`gh`. A failed read of a repository's rulesets stops the run before any write
+to that repository, so a GitHub error can never look like "no rulesets" and
+trigger a re-create. Repositories earlier in the run may already have been
+applied; re-running converges, since an unchanged ruleset is left alone.
 
 ## One-time setup (an org owner)
 
@@ -36,12 +38,16 @@ look like "no rulesets" and trigger a re-create.
    - `RULESETS_APP_ID`: the App ID.
    - `RULESETS_APP_PRIVATE_KEY`: a private key generated for the App.
 
-   Leave deployment branches open: PR plans run from branches of this
-   repository. Fork PRs never get the secrets, and only people with write
-   access here can push a branch.
+   Under **Deployment branches and tags**, choose *Selected branches* and
+   allow `main` only. PR plans still work: they run with
+   `pull_request_target`, which runs `main`'s workflow and script and takes
+   only the PR's `rulesets/repos/*.json` as data, with a read-only token. A
+   workflow edited on a branch cannot reach the key.
 4. Run the `rulesets` workflow by hand in `plan` mode. It must report every
    ruleset `unchanged`.
 
-The App's token can change any ruleset in the org. Its key lives only in the
-`rulesets` environment of this repository, whose `main` is itself protected
-(`rulesets/repos/.github.json`: PR, one approval, required checks).
+The App's write token can change any ruleset in the org. Its key lives only
+in the `rulesets` environment of this repository, which only `main` can use,
+and `main` is itself protected (`rulesets/repos/.github.json`: PR, one
+approval, required checks). Plans ask the App for Administration: read only;
+apply (push to `main`, or a dispatch from `main`) asks for write.
