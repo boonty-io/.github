@@ -45,6 +45,7 @@ jobs:
       - run: test/ci-request-decide.test.sh
       - run: test/ci-hint-should-post.test.sh
       - run: test/rulesets.test.sh
+      - run: test/gates-verify.test.sh
 
   on-demand-guard:
     name: on-demand guard cases
