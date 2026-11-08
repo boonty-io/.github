@@ -1,0 +1,1 @@
+{"repo":"boonty-io/ai-config","title":"docs(shared-learnings): add the foo finding","cross_repo":true,"files":[{"filename":"shared-learnings/foo.md"},{"filename":"shared-learnings/bar.md","previous_filename":"shared-learnings/baz.md"}],"changed_files":2}

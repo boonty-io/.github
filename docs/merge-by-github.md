@@ -50,6 +50,31 @@ it, but not another workflow: anyone who can push a branch can add a workflow
 that posts `gates/verified` with its own `GITHUB_TOKEN`. That is the same
 trust level as forging a receipt, not a stronger one.
 
+**Learnings PRs.** ai-config's learnings PRs (opened by `/close`) merge without
+the four gates by rule, so they publish no receipt. With no writer's receipt
+on the PR, `gates/verified` is `success` for such a PR when all of these hold,
+read off the API and tied to the head the run checks:
+
+- the repository is `boonty-io/ai-config`, the base is `main` and the head is
+  a branch of that repository, not a fork;
+- the title starts with `docs(shared-learnings): `;
+- the file list is complete: its length equals GitHub's `changedFiles`, since
+  the files endpoint stops at 3000;
+- every path, and every path a file was renamed from, is one `.md` file
+  directly under `shared-learnings/`, with no newline in it.
+
+This is stricter than ai-config's own `auto-merge-eligible.sh`, which also
+admits `docs:`/`chore:` titles and `shared/31-security-baseline.md`. A writer's
+receipt on the PR always wins over the exemption. A failing receipt left on a
+learnings PR keeps it red: delete that comment to fall back to the exemption.
+
+**Where it is required.** Require `gates/verified` on each repository's
+integration branch only (`staging`; `main` for ai-config, this repository and
+pos-android-e2e_autotests; `develop` for pos-app-android). Never require it
+on a `main` that a `staging`→`main` delivery PR feeds: there is no delivery
+exemption, so the delivery PR would wait forever. A consequence, by design:
+hotfix PRs into such a `main` are not held by this check.
+
 ## Enabling it in a repository
 
 1. Add `.github/workflows/gates-verify.yml`:
@@ -78,8 +103,9 @@ trust level as forging a receipt, not a stronger one.
    the caller takes effect once it is on `main`.
 2. In `rulesets/repos/<repo>.json`, add
    `{"context": "gates/verified", "integration_id": 15368}` to the required
-   checks of each protected branch. Do it after step 1 has reached `main`, or
-   every PR waits on a status nobody posts.
+   checks of the integration branch only ("Where it is required" above). Do
+   it after step 1 has reached `main`, or every PR waits on a status nobody
+   posts.
 3. Turn on Settings → General → **Allow auto-merge**.
 
 ## What the queue orchestrator still does

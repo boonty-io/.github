@@ -46,7 +46,10 @@ expect malformed.json staging "$H1" failure 'unreadable'
 expect gates-array.json staging "$H1" failure 'unreadable'
 # a writer's comment that only mentions the marker is not a receipt
 expect mention.json staging "$H1" success
-# --- exemptions: facts.json (5th argument), read only when no writer's receipt ---
+# --- exemption: facts.json (5th argument), read only when no writer's receipt ---
+# The predicate runs in jq (Oniguruma: \A, \z, \n in a class). The first case
+# below proves those anchors match a valid PR, so the negative cases are not
+# passing on a regex that matches nothing.
 expectf() { # <comments fixture> <base> <facts fixture> <want state> [grep for the description]
   n=$((n + 1))
   local got; got="$("$sut" "$F/$1" "$F/writers.txt" "$2" "$H1" "$F/facts/$3" 2>&1)"
@@ -70,19 +73,24 @@ expectf none.json main learnings-title-unanchored.json pending 'no gate receipt'
 expectf none.json main learnings-no-files.json pending 'no gate receipt'
 expectf none.json main learnings-files-string.json pending 'no gate receipt'
 expectf none.json main learnings-no-repo.json pending 'no gate receipt'
-# delivery PR: base main, head branch staging of this same repository
-expectf none.json main delivery.json success 'exempt: delivery'
-expectf none.json main delivery-fork.json pending 'no gate receipt'
-expectf none.json main delivery-other-head.json pending 'no gate receipt'
-expectf none.json staging delivery.json pending 'no gate receipt'
-expectf none.json main delivery-no-cross.json pending 'no gate receipt'
-expectf none.json main delivery-cross-string.json pending 'no gate receipt'
+# paths: no newline anywhere, anchored at both ends of the string
+expectf none.json main learnings-newline-inside.json pending 'no gate receipt'
+expectf none.json main learnings-newline-trailing.json pending 'no gate receipt'
+# a newline with no slash after it: only the class's \n refuses it
+expectf none.json main learnings-newline-noslash.json pending 'no gate receipt'
+# the file list must be complete: GitHub truncates pulls/files at 3000
+expectf none.json main learnings-truncated.json pending 'no gate receipt'
+expectf none.json main learnings-no-count.json pending 'no gate receipt'
+# same-repo head, into main
+expectf none.json main learnings-fork.json pending 'no gate receipt'
+expectf none.json main learnings-cross-string.json pending 'no gate receipt'
+expectf none.json main learnings-no-cross.json pending 'no gate receipt'
+expectf none.json staging learnings.json pending 'no gate receipt'
 # unreadable facts never exempt
 expectf none.json main malformed.json pending 'no gate receipt'
 # a writer's receipt is judged as before, whatever the facts say
 expectf gate-fail.json main learnings.json failure 'code-review'
-expectf gate-fail.json main delivery.json failure 'code-review'
-expectf pass.json staging delivery.json success '4/4 gates pass'
+expectf pass.json staging learnings.json success '4/4 gates pass'
 # an empty facts path is the same as no facts
 n=$((n + 1))
 got="$("$sut" "$F/none.json" "$F/writers.txt" main "$H1" "" 2>&1)"
