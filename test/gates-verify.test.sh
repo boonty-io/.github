@@ -103,6 +103,36 @@ expectf pass.json staging learnings.json success '4/4 gates pass'
 n=$((n + 1))
 got="$("$sut" "$F/none.json" "$F/writers.txt" main "$H1" "" 2>&1)"
 if printf '%s\n' "$got" | grep -qx 'state=pending'; then echo "✓ empty facts path → pending"; else echo "✗ empty facts path:"; printf '%s\n' "$got" | sed 's/^/    /'; fail=$((fail + 1)); fi
+# --- lean receipt: roster "lean", judged against the server's own docs-only measure (6th argument) ---
+expectl() { # <comments fixture> <docs_only argument> <want state> [grep for the description]
+  n=$((n + 1))
+  local got; got="$("$sut" "$F/$1" "$F/writers.txt" staging "$H1" "" "$2" 2>&1)"
+  if printf '%s\n' "$got" | grep -qx "state=$3" && { [ -z "${4:-}" ] || printf '%s\n' "$got" | grep -q "^description=.*$4"; }; then
+    echo "✓ [$1 docs_only=$2] state=$3"
+  else
+    echo "✗ [$1 docs_only=$2] want state=$3 ${4:+(description ~ $4)}, got:"; printf '%s\n' "$got" | sed 's/^/    /'; fail=$((fail + 1))
+  fi
+}
+expectl lean-pass.json true success 'lean receipt'
+# the server measured a diff that is not docs-only, or could not measure it
+expectl lean-pass.json false failure 'not docs-only'
+expectl lean-pass.json '' failure 'not docs-only'
+expectl lean-pass.json yes failure 'not docs-only'
+# a lean receipt carries code-review only, passing; anything else is refused
+expectl lean-cr-fail.json true failure 'lean receipt'
+expectl lean-no-gates.json true failure 'lean receipt'
+expectl lean-extra-gates.json true failure 'lean receipt'
+# an unknown roster is refused; "full" or no roster is judged as before
+expectl roster-other.json true failure 'roster'
+expectl roster-full.json false success '4/4 gates pass'
+expectl pass.json false success '4/4 gates pass'
+# a lean receipt is still bound to the diff and the base
+n=$((n + 1))
+got="$("$sut" "$F/lean-pass.json" "$F/writers.txt" staging "$H2" "" true 2>&1)"
+if printf '%s\n' "$got" | grep -qx 'state=failure' && printf '%s\n' "$got" | grep -q 'diff changed'; then echo "✓ lean receipt on a changed diff → failure"; else echo "✗ lean receipt on a changed diff:"; printf '%s\n' "$got" | sed 's/^/    /'; fail=$((fail + 1)); fi
+n=$((n + 1))
+got="$("$sut" "$F/lean-pass.json" "$F/writers.txt" main "$H1" "" true 2>&1)"
+if printf '%s\n' "$got" | grep -qx 'state=failure' && printf '%s\n' "$got" | grep -q 'gated against base'; then echo "✓ lean receipt on another base → failure"; else echo "✗ lean receipt on another base:"; printf '%s\n' "$got" | sed 's/^/    /'; fail=$((fail + 1)); fi
 # output is exactly key=value lines: the description cannot inject a second line
 n=$((n + 1))
 lines="$("$sut" "$F/pass.json" "$F/writers.txt" staging "$H2" | wc -l | tr -d ' ')"
