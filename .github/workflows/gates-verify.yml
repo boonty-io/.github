@@ -78,6 +78,7 @@ jobs:
           sparse-checkout: |
             scripts/gates-verify.sh
             scripts/gates-verify-facts.sh
+            scripts/lean-diff-ok.sh
             scripts/gate-content-hash.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
@@ -122,7 +123,12 @@ jobs:
           # this head (scripts/gates-verify-facts.sh): empty on any failed
           # read or a moved head, which grants no exemption.
           facts="$(shared/scripts/gates-verify-facts.sh "$GITHUB_REPOSITORY" "$PR" "$HEAD_SHA" facts.json)" || facts=""
-          shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$content" "$facts" | tee -a "$GITHUB_OUTPUT"
+          # The server's own docs-only measure, for a lean receipt: true only
+          # on exit 0 of scripts/lean-diff-ok.sh, false on anything else.
+          [ -x shared/scripts/lean-diff-ok.sh ] || { echo "::error title=gates-verify::scripts/lean-diff-ok.sh missing from the sparse checkout"; exit 1; }
+          docs_only=false
+          if shared/scripts/lean-diff-ok.sh head "origin/$BASE" "$HEAD_SHA"; then docs_only=true; fi
+          shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$content" "$facts" "$docs_only" | tee -a "$GITHUB_OUTPUT"
 
       # !cancelled(): a Decide step that errors must not leave an earlier
       # `success` standing on this head; a run superseded by a newer one posts

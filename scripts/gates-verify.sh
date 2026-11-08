@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Decide the `gates/verified` commit status of a pull request head.
 #
-#   gates-verify.sh <comments.json> <writers.txt> <base-branch> <content-sha256> [<facts.json>]
+#   gates-verify.sh <comments.json> <writers.txt> <base-branch> <content-sha256> [<facts.json>] [<docs-only>]
 #
 # <comments.json>   the PR's issue comments as the REST API returns them.
 # <writers.txt>     logins (one per line) whose permission on the repository
@@ -15,6 +15,9 @@
 #                    "files":[{"filename","previous_filename"?}]}.
 #                   Read only when there is no writer's receipt (see below).
 #                   Empty or absent: no exemption.
+# <docs-only>       optional, `true` only when scripts/lean-diff-ok.sh measured
+#                   merge-base..head as docs-only; anything else is false. Read
+#                   only for a lean receipt.
 #
 # Prints two lines for $GITHUB_OUTPUT:
 #
@@ -37,6 +40,12 @@
 #          since the gates ran, the receipt is unreadable, or the hash is empty.
 # pending  no receipt yet.
 #
+# A receipt with "roster":"lean" (ai-config `gate publish` for a docs-only
+# roster) is never judged as the four gates: `success` only when its gates are
+# exactly {"code-review":"pass"}, its base and content_sha256 match as above,
+# and <docs-only> is `true`. Any roster other than "lean" or "full" (absent
+# means "full") is a failure.
+#
 # Exemption, only when no writer's receipt exists (a receipt, passing or not,
 # is always judged as above): `success` for an ai-config learnings PR, which
 # merges without the four gates by rule (ai-config shared/45, shared/48):
@@ -47,9 +56,35 @@
 # exemption: gates/verified is required on integration branches only, never
 # on a main fed by a staging→main PR (docs/merge-by-github.md).
 set -euo pipefail
-comments="${1:?comments.json}"; writers="${2:?writers.txt}"; base="${3-}"; content="${4-}"; facts="${5-}"
+comments="${1:?comments.json}"; writers="${2:?writers.txt}"; base="${3-}"; content="${4-}"; facts="${5-}"; docs_only="${6-}"
 GATES="architecture-reviewer code-review security claim-verifier"
 MARKER='boonty-gates/v1'
+
+# The rule table: one named jq predicate per class of PR that does not carry
+# the four gates. Each is read as `<input> | <name>` and must be true; an
+# error, a missing field or a wrong type makes it false (jq -e, errors to
+# /dev/null). A new class adds one definition here and one call below.
+RULES='
+  # ai-config learnings PR, on the facts (no receipt needed). Only `.files`
+  # needs a type check: an object of valid entries would iterate like the
+  # array. Paths: one .md directly under shared-learnings/, no newline.
+  def path_ok: test("\\Ashared-learnings/[^/\n]+\\.md\\z");
+  def exempt_learnings($base):
+    .repo == "boonty-io/ai-config"
+    and $base == "main"
+    and .cross_repo == false
+    and (.title | test("\\Adocs\\(shared-learnings\\): .+"))
+    and (.files | type) == "array"
+    and (.files | length) > 0
+    and (.files | length) == .changed_files
+    and all(.files[];
+          (.filename | path_ok)
+          and (.previous_filename == null or (.previous_filename | path_ok)));
+  # lean receipt (ai-config shared/45, docs-only), on the receipt: code-review
+  # and nothing else, passing. The docs-only part is the server measure
+  # (scripts/lean-diff-ok.sh), never the receipt.
+  def lean_gates_ok: .gates == {"code-review": "pass"};
+'
 
 out() { # out <state> <description>
   echo "state=$1"
@@ -63,23 +98,9 @@ body="$(jq -r --arg m "$MARKER" --rawfile w "$writers" '
          | select(.user.login as $l | $ok | index($l))]
   | sort_by(.updated_at // .created_at // "") | last | .body // empty' "$comments")"
 [ -n "$body" ] || {
-  # Anything unreadable or missing fails the predicate and stays pending. A
-  # field of the wrong type either compares unequal or makes jq error, which
-  # is swallowed into pending too; only `.files` needs a type check, because
-  # an object's values would iterate like an array's.
-  if [ -n "$facts" ] && [ -s "$facts" ] && jq -e --arg base "$base" '
-      def path_ok: test("\\Ashared-learnings/[^/\n]+\\.md\\z");
-      .repo == "boonty-io/ai-config"
-      and $base == "main"
-      and .cross_repo == false
-      and (.title | test("\\Adocs\\(shared-learnings\\): .+"))
-      and (.files | type) == "array"
-      and (.files | length) > 0
-      and (.files | length) == .changed_files
-      and all(.files[];
-            (.filename | path_ok)
-            and (.previous_filename == null or (.previous_filename | path_ok)))
-    ' "$facts" >/dev/null 2>&1; then
+  # Anything unreadable or missing fails the predicate and stays pending.
+  if [ -n "$facts" ] && [ -s "$facts" ] &&
+     jq -e --arg base "$base" "$RULES exempt_learnings(\$base)" "$facts" >/dev/null 2>&1; then
     out success "exempt: learnings PR, $(jq -r '.files | length' "$facts") file(s) under shared-learnings/, no gate receipt needed"
   fi
   out pending "no gate receipt on this PR yet (boonty-ai gate publish)"
@@ -89,6 +110,27 @@ body="$(jq -r --arg m "$MARKER" --rawfile w "$writers" '
 json="$(printf '%s\n' "$body" | awk '/^```json[[:space:]]*$/{f=1;next} f&&/^```/{exit} f')"
 receipt="$(printf '%s' "$json" | jq -ce 'select(type == "object" and .v == 1 and (.gates | type) == "object")' 2>/dev/null)" \
   || out failure "gate receipt comment is unreadable; re-run boonty-ai gate publish"
+
+roster="$(jq -r '.roster // "full" | tostring' <<<"$receipt")"
+case "$roster" in
+  full) ;;
+  lean)
+    # Never judged as 4/4: code-review only, then the same base and diff
+    # binding, then the server's own docs-only measure.
+    jq -e "$RULES lean_gates_ok" <<<"$receipt" >/dev/null 2>&1 \
+      || out failure "lean receipt must carry code-review pass and nothing else; re-run boonty-ai gate publish"
+    got_base="$(jq -r '.base // "" | tostring' <<<"$receipt")"
+    [ -n "$base" ] && [ "${got_base#origin/}" = "$base" ] \
+      || out failure "gated against base '${got_base}', PR targets '${base}'; re-gate"
+    want="$(jq -r '.content_sha256 // "" | tostring' <<<"$receipt")"
+    [ "$want" = "$content" ] \
+      || out failure "diff changed since the gates ran (receipt ${want:0:12}, head ${content:0:12}); re-gate"
+    [ "$docs_only" = true ] \
+      || out failure "lean receipt, but this diff is not docs-only as measured here; run the four gates"
+    out success "lean receipt: code-review pass on a docs-only diff (${content:0:12}); a human merges"
+    ;;
+  *) out failure "unknown roster '${roster:0:20}' in the gate receipt; re-run boonty-ai gate publish" ;;
+esac
 
 short_of=""
 for g in $GATES; do
