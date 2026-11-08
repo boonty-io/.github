@@ -46,6 +46,63 @@ expect malformed.json staging "$H1" failure 'unreadable'
 expect gates-array.json staging "$H1" failure 'unreadable'
 # a writer's comment that only mentions the marker is not a receipt
 expect mention.json staging "$H1" success
+# --- exemption: facts.json (5th argument), read only when no writer's receipt ---
+# The predicate runs in jq (Oniguruma: \A, \z, \n in a class). The first case
+# below proves those anchors match a valid PR, so the negative cases are not
+# passing on a regex that matches nothing.
+expectf() { # <comments fixture> <base> <facts fixture> <want state> [grep for the description]
+  n=$((n + 1))
+  local got; got="$("$sut" "$F/$1" "$F/writers.txt" "$2" "$H1" "$F/facts/$3" 2>&1)"
+  if printf '%s\n' "$got" | grep -qx "state=$4" && { [ -z "${5:-}" ] || printf '%s\n' "$got" | grep -q "^description=.*$5"; }; then
+    echo "✓ [$1 + facts/$3 @ $2] state=$4"
+  else
+    echo "✗ [$1 + facts/$3 @ $2] want state=$4 ${5:+(description ~ $5)}, got:"; printf '%s\n' "$got" | sed 's/^/    /'; fail=$((fail + 1))
+  fi
+}
+# learnings PR (ai-config only): docs(shared-learnings) title, every path under shared-learnings/*.md
+expectf none.json main learnings.json success 'exempt: learnings'
+expectf none.json main learnings-extra-path.json pending 'no gate receipt'
+# a rename INTO shared-learnings/ moves a file out of somewhere else
+expectf none.json main learnings-renamed-in.json pending 'no gate receipt'
+expectf none.json main learnings-subdir.json pending 'no gate receipt'
+expectf none.json main learnings-not-md.json pending 'no gate receipt'
+expectf none.json main learnings-other-repo.json pending 'no gate receipt'
+expectf none.json main learnings-plain-docs.json pending 'no gate receipt'
+expectf none.json main learnings-breaking.json pending 'no gate receipt'
+expectf none.json main learnings-title-unanchored.json pending 'no gate receipt'
+expectf none.json main learnings-no-files.json pending 'no gate receipt'
+expectf none.json main learnings-files-string.json pending 'no gate receipt'
+# an object of valid entries iterates like an array: only the type check refuses it
+expectf none.json main learnings-files-object.json pending 'no gate receipt'
+# wrong types elsewhere compare unequal or make jq fail: still pending
+expectf none.json main learnings-count-string.json pending 'no gate receipt'
+expectf none.json main learnings-entry-string.json pending 'no gate receipt'
+expectf none.json main learnings-top-array.json pending 'no gate receipt'
+expectf none.json main learnings-title-number.json pending 'no gate receipt'
+expectf none.json main learnings-path-number.json pending 'no gate receipt'
+expectf none.json main learnings-no-repo.json pending 'no gate receipt'
+# paths: no newline anywhere, anchored at both ends of the string
+expectf none.json main learnings-newline-inside.json pending 'no gate receipt'
+expectf none.json main learnings-newline-trailing.json pending 'no gate receipt'
+# a newline with no slash after it: only the class's \n refuses it
+expectf none.json main learnings-newline-noslash.json pending 'no gate receipt'
+# the file list must be complete: GitHub truncates pulls/files at 3000
+expectf none.json main learnings-truncated.json pending 'no gate receipt'
+expectf none.json main learnings-no-count.json pending 'no gate receipt'
+# same-repo head, into main
+expectf none.json main learnings-fork.json pending 'no gate receipt'
+expectf none.json main learnings-cross-string.json pending 'no gate receipt'
+expectf none.json main learnings-no-cross.json pending 'no gate receipt'
+expectf none.json staging learnings.json pending 'no gate receipt'
+# unreadable facts never exempt
+expectf none.json main malformed.json pending 'no gate receipt'
+# a writer's receipt is judged as before, whatever the facts say
+expectf gate-fail.json main learnings.json failure 'code-review'
+expectf pass.json staging learnings.json success '4/4 gates pass'
+# an empty facts path is the same as no facts
+n=$((n + 1))
+got="$("$sut" "$F/none.json" "$F/writers.txt" main "$H1" "" 2>&1)"
+if printf '%s\n' "$got" | grep -qx 'state=pending'; then echo "✓ empty facts path → pending"; else echo "✗ empty facts path:"; printf '%s\n' "$got" | sed 's/^/    /'; fail=$((fail + 1)); fi
 # output is exactly key=value lines: the description cannot inject a second line
 n=$((n + 1))
 lines="$("$sut" "$F/pass.json" "$F/writers.txt" staging "$H2" | wc -l | tr -d ' ')"

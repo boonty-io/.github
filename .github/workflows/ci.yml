@@ -46,6 +46,7 @@ jobs:
       - run: test/ci-hint-should-post.test.sh
       - run: test/rulesets.test.sh
       - run: test/gates-verify.test.sh
+      - run: test/gates-verify-facts.test.sh
       - run: test/gate-content-hash.test.sh
 
   on-demand-guard:

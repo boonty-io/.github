@@ -77,6 +77,7 @@ jobs:
           path: shared
           sparse-checkout: |
             scripts/gates-verify.sh
+            scripts/gates-verify-facts.sh
             scripts/gate-content-hash.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
@@ -117,7 +118,11 @@ jobs:
               }
               case "$perm" in admin|maintain|write) echo "$login" >> writers.txt ;; esac
             done
-          shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$content" | tee -a "$GITHUB_OUTPUT"
+          # Facts for the learnings exemption, read off the API and tied to
+          # this head (scripts/gates-verify-facts.sh): empty on any failed
+          # read or a moved head, which grants no exemption.
+          facts="$(shared/scripts/gates-verify-facts.sh "$GITHUB_REPOSITORY" "$PR" "$HEAD_SHA" facts.json)" || facts=""
+          shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$content" "$facts" | tee -a "$GITHUB_OUTPUT"
 
       # !cancelled(): a Decide step that errors must not leave an earlier
       # `success` standing on this head; a run superseded by a newer one posts

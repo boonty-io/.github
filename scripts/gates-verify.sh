@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Decide the `gates/verified` commit status of a pull request head.
 #
-#   gates-verify.sh <comments.json> <writers.txt> <base-branch> <content-sha256>
+#   gates-verify.sh <comments.json> <writers.txt> <base-branch> <content-sha256> [<facts.json>]
 #
 # <comments.json>   the PR's issue comments as the REST API returns them.
 # <writers.txt>     logins (one per line) whose permission on the repository
@@ -10,6 +10,11 @@
 # <content-sha256>  sha256 of the pinned diff merge-base(base, head)..head, as
 #                   computed by scripts/gate-content-hash.sh (the same command
 #                   `boonty-ai gate publish` runs).
+# <facts.json>      optional, written by the workflow from the API:
+#                   {"repo","title","cross_repo","changed_files",
+#                    "files":[{"filename","previous_filename"?}]}.
+#                   Read only when there is no writer's receipt (see below).
+#                   Empty or absent: no exemption.
 #
 # Prints two lines for $GITHUB_OUTPUT:
 #
@@ -31,8 +36,18 @@
 # failure  a gate is missing or not "pass", the base or the content changed
 #          since the gates ran, the receipt is unreadable, or the hash is empty.
 # pending  no receipt yet.
+#
+# Exemption, only when no writer's receipt exists (a receipt, passing or not,
+# is always judged as above): `success` for an ai-config learnings PR, which
+# merges without the four gates by rule (ai-config shared/45, shared/48):
+# base main, head in this repository, title `docs(shared-learnings): …`, a
+# complete file list (its length is GitHub's changed_files: pulls/files stops
+# at 3000), and every path and every renamed-from path one file directly
+# under shared-learnings/ ending .md, with no newline. There is no delivery
+# exemption: gates/verified is required on integration branches only, never
+# on a main fed by a staging→main PR (docs/merge-by-github.md).
 set -euo pipefail
-comments="${1:?comments.json}"; writers="${2:?writers.txt}"; base="${3-}"; content="${4-}"
+comments="${1:?comments.json}"; writers="${2:?writers.txt}"; base="${3-}"; content="${4-}"; facts="${5-}"
 GATES="architecture-reviewer code-review security claim-verifier"
 MARKER='boonty-gates/v1'
 
@@ -47,7 +62,28 @@ body="$(jq -r --arg m "$MARKER" --rawfile w "$writers" '
   | [.[] | select((.body // "") | startswith($m))
          | select(.user.login as $l | $ok | index($l))]
   | sort_by(.updated_at // .created_at // "") | last | .body // empty' "$comments")"
-[ -n "$body" ] || out pending "no gate receipt on this PR yet (boonty-ai gate publish)"
+[ -n "$body" ] || {
+  # Anything unreadable or missing fails the predicate and stays pending. A
+  # field of the wrong type either compares unequal or makes jq error, which
+  # is swallowed into pending too; only `.files` needs a type check, because
+  # an object's values would iterate like an array's.
+  if [ -n "$facts" ] && [ -s "$facts" ] && jq -e --arg base "$base" '
+      def path_ok: test("\\Ashared-learnings/[^/\n]+\\.md\\z");
+      .repo == "boonty-io/ai-config"
+      and $base == "main"
+      and .cross_repo == false
+      and (.title | test("\\Adocs\\(shared-learnings\\): .+"))
+      and (.files | type) == "array"
+      and (.files | length) > 0
+      and (.files | length) == .changed_files
+      and all(.files[];
+            (.filename | path_ok)
+            and (.previous_filename == null or (.previous_filename | path_ok)))
+    ' "$facts" >/dev/null 2>&1; then
+    out success "exempt: learnings PR, $(jq -r '.files | length' "$facts") file(s) under shared-learnings/, no gate receipt needed"
+  fi
+  out pending "no gate receipt on this PR yet (boonty-ai gate publish)"
+}
 [[ "$content" =~ ^[0-9a-f]{64}$ ]] || out failure "could not compute the content hash of this head"
 
 json="$(printf '%s\n' "$body" | awk '/^```json[[:space:]]*$/{f=1;next} f&&/^```/{exit} f')"
