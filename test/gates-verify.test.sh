@@ -72,6 +72,14 @@ expectf none.json main learnings-breaking.json pending 'no gate receipt'
 expectf none.json main learnings-title-unanchored.json pending 'no gate receipt'
 expectf none.json main learnings-no-files.json pending 'no gate receipt'
 expectf none.json main learnings-files-string.json pending 'no gate receipt'
+# an object of valid entries iterates like an array: only the type check refuses it
+expectf none.json main learnings-files-object.json pending 'no gate receipt'
+# wrong types elsewhere compare unequal or make jq fail: still pending
+expectf none.json main learnings-count-string.json pending 'no gate receipt'
+expectf none.json main learnings-entry-string.json pending 'no gate receipt'
+expectf none.json main learnings-top-array.json pending 'no gate receipt'
+expectf none.json main learnings-title-number.json pending 'no gate receipt'
+expectf none.json main learnings-path-number.json pending 'no gate receipt'
 expectf none.json main learnings-no-repo.json pending 'no gate receipt'
 # paths: no newline anywhere, anchored at both ends of the string
 expectf none.json main learnings-newline-inside.json pending 'no gate receipt'

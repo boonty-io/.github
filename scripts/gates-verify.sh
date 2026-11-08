@@ -63,23 +63,21 @@ body="$(jq -r --arg m "$MARKER" --rawfile w "$writers" '
          | select(.user.login as $l | $ok | index($l))]
   | sort_by(.updated_at // .created_at // "") | last | .body // empty' "$comments")"
 [ -n "$body" ] || {
-  # Anything unreadable, missing or of the wrong type fails the predicate and
-  # stays pending; jq errors are swallowed for the same reason.
+  # Anything unreadable or missing fails the predicate and stays pending. A
+  # field of the wrong type either compares unequal or makes jq error, which
+  # is swallowed into pending too; only `.files` needs a type check, because
+  # an object's values would iterate like an array's.
   if [ -n "$facts" ] && [ -s "$facts" ] && jq -e --arg base "$base" '
-      def path_ok: type == "string" and test("\\Ashared-learnings/[^/\n]+\\.md\\z");
-      type == "object"
-      and .repo == "boonty-io/ai-config"
+      def path_ok: test("\\Ashared-learnings/[^/\n]+\\.md\\z");
+      .repo == "boonty-io/ai-config"
       and $base == "main"
       and .cross_repo == false
-      and (.title | type) == "string"
       and (.title | test("\\Adocs\\(shared-learnings\\): .+"))
       and (.files | type) == "array"
       and (.files | length) > 0
-      and (.changed_files | type) == "number"
       and (.files | length) == .changed_files
       and all(.files[];
-            type == "object"
-            and (.filename | path_ok)
+            (.filename | path_ok)
             and (.previous_filename == null or (.previous_filename | path_ok)))
     ' "$facts" >/dev/null 2>&1; then
     out success "exempt: learnings PR, $(jq -r '.files | length' "$facts") file(s) under shared-learnings/, no gate receipt needed"

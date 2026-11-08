@@ -67,6 +67,9 @@ This is stricter than ai-config's own `auto-merge-eligible.sh`, which also
 admits `docs:`/`chore:` titles and `shared/31-security-baseline.md`. A writer's
 receipt on the PR always wins over the exemption. A failing receipt left on a
 learnings PR keeps it red: delete that comment to fall back to the exemption.
+The files endpoint reports paths, not file modes, so a symbolic link named
+`shared-learnings/x.md` would match too. That needs write access and adds
+nothing over the trust level above.
 
 **Where it is required.** Require `gates/verified` on each repository's
 integration branch only (`staging`; `main` for ai-config, this repository and

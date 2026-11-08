@@ -77,6 +77,7 @@ jobs:
           path: shared
           sparse-checkout: |
             scripts/gates-verify.sh
+            scripts/gates-verify-facts.sh
             scripts/gate-content-hash.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
@@ -118,21 +119,9 @@ jobs:
               case "$perm" in admin|maintain|write) echo "$login" >> writers.txt ;; esac
             done
           # Facts for the learnings exemption, read off the API and tied to
-          # this head: the head is read again after the file list, and any
-          # failed read or a moved head leaves facts empty (no exemption).
-          facts=facts.json
-          if gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json title,isCrossRepository,changedFiles,headRefOid > view.json &&
-             gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
-               --jq '.[] | {filename, previous_filename}' | jq -s . > files.json &&
-             again="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" &&
-             [ "$(jq -r .headRefOid view.json)" = "$HEAD_SHA" ] && [ "$again" = "$HEAD_SHA" ]; then
-            jq -n --arg repo "$GITHUB_REPOSITORY" --slurpfile v view.json --slurpfile f files.json \
-              '{repo: $repo, title: $v[0].title, cross_repo: $v[0].isCrossRepository,
-                changed_files: $v[0].changedFiles, files: $f[0]}' > "$facts"
-          else
-            echo "::notice title=gates-verify::could not read this head's facts; no exemption on this run"
-            facts=""
-          fi
+          # this head (scripts/gates-verify-facts.sh): empty on any failed
+          # read or a moved head, which grants no exemption.
+          facts="$(shared/scripts/gates-verify-facts.sh "$GITHUB_REPOSITORY" "$PR" "$HEAD_SHA" facts.json)" || facts=""
           shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$content" "$facts" | tee -a "$GITHUB_OUTPUT"
 
       # !cancelled(): a Decide step that errors must not leave an earlier
