@@ -19,6 +19,7 @@ concurrency:
 jobs:
   request:
     # Everything else is the shared workflow's decision.
+    # Replace <sha> with the boonty-io/.github main commit to pin (docs/on-demand-ci.md, "Pinning").
     uses: boonty-io/.github/.github/workflows/ci-request.yml@<sha> # main
     permissions:
       contents: read
