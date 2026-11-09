@@ -44,6 +44,7 @@ jobs:
       contents: read        # the PR head, to hash its diff
       pull-requests: read   # gh pr view, the PR's comments
       statuses: write       # gates/verified
+      packages: read        # @boonty-io/ai-config, to reproduce a bump PR
     steps:
       - name: Resolve the pull request
         id: pr
@@ -79,6 +80,8 @@ jobs:
             scripts/gates-verify.sh
             scripts/gates-verify-facts.sh
             scripts/lean-diff-ok.sh
+            scripts/bump-reproduces.sh
+            scripts/bump-normalize.py
             scripts/gate-content-hash.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
@@ -128,7 +131,21 @@ jobs:
           [ -x shared/scripts/lean-diff-ok.sh ] || { echo "::error title=gates-verify::scripts/lean-diff-ok.sh missing from the sparse checkout"; exit 1; }
           docs_only=false
           if shared/scripts/lean-diff-ok.sh head "origin/$BASE" "$HEAD_SHA"; then docs_only=true; fi
-          shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$content" "$facts" "$docs_only" | tee -a "$GITHUB_OUTPUT"
+          # An ai-config bump PR: the dispatch title and branch match, and the
+          # published release's own `boonty-ai sync` reproduces the head
+          # exactly (scripts/bump-reproduces.sh). The registry token is written
+          # only to a temp userconfig, which the script deletes before sync.
+          bump_ok=false
+          version="$( [ -n "$facts" ] && jq -r '(.title | capture("\\Achore\\(deps\\): bump @boonty-io/ai-config to v(?<v>[0-9]+\\.[0-9]+\\.[0-9]+)\\z").v) as $v
+            | select(.head_ref == ("chore/bump-ai-config-v" + $v) and .cross_repo == false) | $v' "$facts" 2>/dev/null || true)"
+          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            [ -x shared/scripts/bump-reproduces.sh ] || { echo "::error title=gates-verify::scripts/bump-reproduces.sh missing from the sparse checkout"; exit 1; }
+            npmrc="$(mktemp)"; chmod 600 "$npmrc"
+            printf '@boonty-io:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "$GH_TOKEN" > "$npmrc"
+            if shared/scripts/bump-reproduces.sh head "origin/$BASE" "$HEAD_SHA" "$version" "$npmrc"; then bump_ok=true; fi
+            rm -f "$npmrc"
+          fi
+          shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$content" "$facts" "$docs_only" "$bump_ok" | tee -a "$GITHUB_OUTPUT"
 
       # !cancelled(): a Decide step that errors must not leave an earlier
       # `success` standing on this head; a run superseded by a newer one posts
