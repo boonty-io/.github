@@ -93,11 +93,14 @@ RULES='
   # when scripts/bump-reproduces.sh reproduced it (<bump-reproduces> = true).
   def bump_version:
     (.title | capture("\\Achore\\(deps\\): bump @boonty-io/ai-config to v(?<v>[0-9]+\\.[0-9]+\\.[0-9]+)\\z").v);
+  # The version is bound first, outside the `and` chain, so the rule does not
+  # depend on how a jq version parses `A and B as $v | C` (CI's jq refused the
+  # valid bump.json fixture with that form; macOS jq 1.7.1 accepted it).
   def exempt_bump:
-    .repo != "boonty-io/ai-config" and .repo != "boonty-io/.github"
-    and .cross_repo == false
-    and bump_version as $v
-    | .head_ref == ("chore/bump-ai-config-v" + $v);
+    bump_version as $v
+    | (.repo != "boonty-io/ai-config" and .repo != "boonty-io/.github"
+       and .cross_repo == false
+       and .head_ref == ("chore/bump-ai-config-v" + $v));
 '
 
 out() { # out <state> <description>
