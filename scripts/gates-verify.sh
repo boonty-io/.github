@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Decide the `gates/verified` commit status of a pull request head.
 #
-#   gates-verify.sh <comments.json> <writers.txt> <base-branch> <content-sha256> [<facts.json>] [<docs-only>]
+#   gates-verify.sh <comments.json> <writers.txt> <base-branch> <content-sha256> [<facts.json>] [<docs-only>] [<bump-reproduces>]
 #
 # <comments.json>   the PR's issue comments as the REST API returns them.
 # <writers.txt>     logins (one per line) whose permission on the repository
@@ -18,6 +18,9 @@
 # <docs-only>       optional, `true` only when scripts/lean-diff-ok.sh measured
 #                   merge-base..head as docs-only; anything else is false. Read
 #                   only for a lean receipt.
+# <bump-reproduces> optional, `true` only when scripts/bump-reproduces.sh exited
+#                   0 for the version the title names. Read only with no
+#                   writer's receipt, for a PR the exempt_bump rule matches.
 #
 # Prints two lines for $GITHUB_OUTPUT:
 #
@@ -56,7 +59,7 @@
 # exemption: gates/verified is required on integration branches only, never
 # on a main fed by a staging→main PR (docs/merge-by-github.md).
 set -euo pipefail
-comments="${1:?comments.json}"; writers="${2:?writers.txt}"; base="${3-}"; content="${4-}"; facts="${5-}"; docs_only="${6-}"
+comments="${1:?comments.json}"; writers="${2:?writers.txt}"; base="${3-}"; content="${4-}"; facts="${5-}"; docs_only="${6-}"; bump_ok="${7-}"
 GATES="architecture-reviewer code-review security claim-verifier"
 MARKER='boonty-gates/v1'
 
@@ -84,6 +87,22 @@ RULES='
   # and nothing else, passing. The docs-only part is the server measure
   # (scripts/lean-diff-ok.sh), never the receipt.
   def lean_gates_ok: .gates == {"code-review": "pass"};
+  # ai-config bump PR, on the facts (no receipt needed): the dispatch title and
+  # branch name one version, the head is not a fork, and the repo is a
+  # consumer. The content is never trusted from the facts: the PR passes only
+  # when scripts/bump-reproduces.sh reproduced it (<bump-reproduces> = true).
+  def bump_version:
+    (.title | capture("\\Achore\\(deps\\): bump @boonty-io/ai-config to v(?<v>[0-9]+\\.[0-9]+\\.[0-9]+)\\z").v);
+  # The version is bound first, outside the `and` chain, so the rule does not
+  # depend on how a jq version parses `A and B as $v | C`. With that form the
+  # valid bump.json fixture returned pending on the CI runner (cause not
+  # isolated: jq errors go to /dev/null here) and passed on macOS jq 1.7.1.
+  # No apostrophe in this block: it is one single-quoted string.
+  def exempt_bump:
+    bump_version as $v
+    | (.repo != "boonty-io/ai-config" and .repo != "boonty-io/.github"
+       and .cross_repo == false
+       and .head_ref == ("chore/bump-ai-config-v" + $v));
 '
 
 out() { # out <state> <description>
@@ -102,6 +121,10 @@ body="$(jq -r --arg m "$MARKER" --rawfile w "$writers" '
   if [ -n "$facts" ] && [ -s "$facts" ] &&
      jq -e --arg base "$base" "$RULES exempt_learnings(\$base)" "$facts" >/dev/null 2>&1; then
     out success "exempt: learnings PR, $(jq -r '.files | length' "$facts") file(s) under shared-learnings/, no gate receipt needed"
+  fi
+  if [ "$bump_ok" = true ] && [ -n "$facts" ] && [ -s "$facts" ] &&
+     jq -e "$RULES exempt_bump" "$facts" >/dev/null 2>&1; then
+    out success "exempt: ai-config bump v$(jq -r "$RULES bump_version" "$facts") reproduced by boonty-ai sync"
   fi
   out pending "no gate receipt on this PR yet (boonty-ai gate publish)"
 }

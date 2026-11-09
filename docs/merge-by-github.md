@@ -93,6 +93,34 @@ required check from blocking the merge. ai-config's review hook
 "counts only on `gh pr ready`, never `gh pr merge`") stops an agent from
 merging, so a human merges the PR.
 
+**Bump PRs.** The `chore(deps): bump @boonty-io/ai-config to vX.Y.Z` PRs that
+ai-config's dispatch opens carry no receipt. With no writer's receipt,
+`gates/verified` is `success` for such a PR only when all of these hold:
+
+- the title and the head branch (`chore/bump-ai-config-vX.Y.Z`) name the same
+  version, the head is not a fork, and the repository is neither ai-config nor
+  this one;
+- `scripts/bump-reproduces.sh` exits 0:
+  - the version is newer than both the merge base's and the base tip's;
+  - `package.json`, `pnpm-lock.yaml` and `pnpm-workspace.yaml` equal their
+    merge-base copies byte for byte, once the ai-config version strings are
+    normalised;
+  - the lockfile pins the GitHub Packages tarball, and its integrity equals
+    the registry's;
+  - the published release's own `boonty-ai sync`, run with an emptied
+    environment in a scratch worktree at the merge base, reproduces every
+    other file of the head exactly. It runs in a job of its own (`bump`), on
+    its own runner, whose token cannot post a status (`contents`,
+    `pull-requests` and `packages`, all read); the registry userconfig is
+    deleted before `sync` starts. `verify` holds `statuses: write` and takes
+    the `bump` verdict only for the head it verifies itself.
+
+Nothing from the PR is executed: the PR's files are read as data, and `sync`
+comes from the published package, which was gated in ai-config. A change in
+ai-config's own dependencies, or any edit beyond the version, leaves the PR
+`pending`, to be merged by hand. Every caller must grant `packages: read` (see
+step 1 below) before this workflow requests it, or the workflow fails at startup.
+
 **Where it is required.** Require `gates/verified` on each repository's
 integration branch only (`staging`; `main` for ai-config, this repository and
 pos-android-e2e_autotests; `develop` for pos-app-android). Never require it
@@ -121,7 +149,7 @@ hotfix PRs into such a `main` are not held by this check.
      verify:
        if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && startsWith(github.event.comment.body, 'boonty-gates/v1'))
        uses: boonty-io/.github/.github/workflows/gates-verify.yml@main
-       permissions: { contents: read, pull-requests: read, statuses: write }
+       permissions: { contents: read, pull-requests: read, statuses: write, packages: read }
    ```
 
    `issue_comment` and `pull_request_target` run from the default branch, so

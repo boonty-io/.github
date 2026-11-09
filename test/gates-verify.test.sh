@@ -133,6 +133,30 @@ if printf '%s\n' "$got" | grep -qx 'state=failure' && printf '%s\n' "$got" | gre
 n=$((n + 1))
 got="$("$sut" "$F/lean-pass.json" "$F/writers.txt" main "$H1" "" true 2>&1)"
 if printf '%s\n' "$got" | grep -qx 'state=failure' && printf '%s\n' "$got" | grep -q 'gated against base'; then echo "✓ lean receipt on another base → failure"; else echo "✗ lean receipt on another base:"; printf '%s\n' "$got" | sed 's/^/    /'; fail=$((fail + 1)); fi
+# --- bump PR: facts match the dispatch shape AND the server reproduced it (7th argument) ---
+expectb() { # <comments fixture> <facts fixture> <bump-reproduces> <want state> [grep for the description]
+  n=$((n + 1))
+  local got; got="$("$sut" "$F/$1" "$F/writers.txt" staging "$H1" "$F/facts/$2" "" "$3" 2>&1)"
+  if printf '%s\n' "$got" | grep -qx "state=$4" && { [ -z "${5:-}" ] || printf '%s\n' "$got" | grep -q "^description=.*$5"; }; then
+    echo "✓ [$1 + facts/$2 bump=$3] state=$4"
+  else
+    echo "✗ [$1 + facts/$2 bump=$3] want state=$4 ${5:+(description ~ $5)}, got:"; printf '%s\n' "$got" | sed 's/^/    /'; fail=$((fail + 1))
+  fi
+}
+expectb none.json bump.json true success 'exempt: ai-config bump v0.110.0 reproduced'
+# not reproduced, or no measure: pending, never a pass
+expectb none.json bump.json false pending 'no gate receipt'
+expectb none.json bump.json '' pending 'no gate receipt'
+expectb none.json bump.json yes pending 'no gate receipt'
+# the facts must have the dispatch shape
+expectb none.json bump-branch-mismatch.json true pending 'no gate receipt'
+expectb none.json bump-prerelease.json true pending 'no gate receipt'
+expectb none.json bump-title-unanchored.json true pending 'no gate receipt'
+expectb none.json bump-fork.json true pending 'no gate receipt'
+expectb none.json bump-ai-config.json true pending 'no gate receipt'
+expectb none.json bump-dotgithub.json true pending 'no gate receipt'
+# a writer's receipt is judged as before
+expectb gate-fail.json bump.json true failure 'code-review'
 # output is exactly key=value lines: the description cannot inject a second line
 n=$((n + 1))
 lines="$("$sut" "$F/pass.json" "$F/writers.txt" staging "$H2" | wc -l | tr -d ' ')"

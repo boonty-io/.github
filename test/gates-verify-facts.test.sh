@@ -14,9 +14,9 @@ mkdir -p "$work/bin"
 cat > "$work/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
-  "pr view "*"--json title,isCrossRepository,changedFiles,headRefOid"*)
+  "pr view "*"--json title,isCrossRepository,changedFiles,headRefOid,headRefName"*)
     [ "${STUB_VIEW_FAIL:-}" = 1 ] && exit 1
-    printf '{"title":"docs(shared-learnings): add x","isCrossRepository":false,"changedFiles":2,"headRefOid":"%s"}\n' "$STUB_VIEW_HEAD" ;;
+    printf '{"title":"docs(shared-learnings): add x","isCrossRepository":false,"changedFiles":2,"headRefOid":"%s","headRefName":"docs/learning-x"}\n' "$STUB_VIEW_HEAD" ;;
   "pr view "*"--json headRefOid --jq .headRefOid"*)
     [ "${STUB_AGAIN_FAIL:-}" = 1 ] && exit 1
     echo "$STUB_AGAIN_HEAD" ;;
@@ -39,7 +39,7 @@ case_() { # <name> <want: facts|none> [VAR=value ...]
   local ok=1
   if [ "$want" = facts ]; then
     [ "$rc" = 0 ] && [ "$printed" = "$work/facts.json" ] &&
-      jq -e '.repo == "boonty-io/ai-config" and .title == "docs(shared-learnings): add x"
+      jq -e '.repo == "boonty-io/ai-config" and .title == "docs(shared-learnings): add x" and .head_ref == "docs/learning-x"
              and .cross_repo == false and .changed_files == 2
              and .files == [{"filename":"shared-learnings/a.md","previous_filename":null},
                             {"filename":"shared-learnings/b.md","previous_filename":"shared-learnings/c.md"}]' \

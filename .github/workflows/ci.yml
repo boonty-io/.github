@@ -48,6 +48,7 @@ jobs:
       - run: test/gates-verify.test.sh
       - run: test/gates-verify-facts.test.sh
       - run: test/lean-diff-ok.test.sh
+      - run: test/bump-reproduces.test.sh
       - run: test/gate-content-hash.test.sh
 
   on-demand-guard:
