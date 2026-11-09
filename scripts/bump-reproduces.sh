@@ -100,6 +100,6 @@ done
 node_dir="$(dirname "$(command -v node)")"
 (cd "$wt" && env -i HOME="$tmp/home" PATH="$node_dir:/usr/bin:/bin" "$bin" sync >"$tmp/sync.log" 2>&1) \
   || no "boonty-ai sync failed: $(tail -1 "$tmp/sync.log")"
-[ -z "$(git -C "$wt" ls-files --others --exclude-standard)" ] || no "sync left untracked files the head does not have"
+[ -z "$(git -C "$wt" ls-files --others --exclude-standard)" ] || no "sync wrote files the merge base does not track; a bump that adds a generated file is not exempt"
 git -C "$wt" diff --quiet "$head" -- . || no "the head differs from what boonty-ai sync $version produces"
 exit 0
