@@ -93,7 +93,7 @@ got_int="$(jq -r --arg k "node_modules/$PKG" '.packages[$k].integrity // ""' "$i
 bin="$inst/node_modules/.bin/boonty-ai"; [ -x "$bin" ] || err "installed package has no boonty-ai bin"
 rm -f "$npmrc"
 
-wt="$tmp/wt"
+wt="$tmp/wt"; mkdir -p "$tmp/home"
 g worktree add -q --detach "$wt" "$mb" >/dev/null 2>&1 || err "cannot create a worktree at the merge base"
 for f in package.json pnpm-lock.yaml pnpm-workspace.yaml; do
   [ -e "$tmp/$f.$head" ] && cp "$tmp/$f.$head" "$wt/$f"

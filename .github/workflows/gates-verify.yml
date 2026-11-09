@@ -96,8 +96,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Decide
-        id: decide
+      - name: Gather the facts
+        id: facts
         if: steps.pr.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -110,6 +110,7 @@ jobs:
           # Empty when it cannot be taken, which the decision turns into a
           # failure, never a pass.
           content="$(shared/scripts/gate-content-hash.sh head "origin/$BASE" "$HEAD_SHA")" || content=""
+          echo "content=$content" >> "$GITHUB_OUTPUT"
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate --jq '.[]' | jq -s . > comments.json
           # Receipt authors who can push to this repository. author_association
           # is not enough: MEMBER is any org member, COLLABORATOR may be read-only.
@@ -127,26 +128,57 @@ jobs:
           # this head (scripts/gates-verify-facts.sh): empty on any failed
           # read or a moved head, which grants no exemption.
           facts="$(shared/scripts/gates-verify-facts.sh "$GITHUB_REPOSITORY" "$PR" "$HEAD_SHA" facts.json)" || facts=""
+          echo "facts=$facts" >> "$GITHUB_OUTPUT"
           # The server's own docs-only measure, for a lean receipt: true only
           # on exit 0 of scripts/lean-diff-ok.sh, false on anything else.
           [ -x shared/scripts/lean-diff-ok.sh ] || { echo "::error title=gates-verify::scripts/lean-diff-ok.sh missing from the sparse checkout"; exit 1; }
           docs_only=false
           if shared/scripts/lean-diff-ok.sh head "origin/$BASE" "$HEAD_SHA"; then docs_only=true; fi
-          # An ai-config bump PR: the dispatch title and branch match, and the
-          # published release's own `boonty-ai sync` reproduces the head
-          # exactly (scripts/bump-reproduces.sh). The registry token is written
-          # only to a temp userconfig, which the script deletes before sync.
-          bump_ok=false
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          # An ai-config bump PR: the dispatch title and branch match. Only the
+          # registry userconfig is written here; the reproduction runs in the
+          # next step, which has no token in its environment.
           version="$( [ -n "$facts" ] && jq -r '(.title | capture("\\Achore\\(deps\\): bump @boonty-io/ai-config to v(?<v>[0-9]+\\.[0-9]+\\.[0-9]+)\\z").v) as $v
             | select(.head_ref == ("chore/bump-ai-config-v" + $v) and .cross_repo == false) | $v' "$facts" 2>/dev/null || true)"
           if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            [ -x shared/scripts/bump-reproduces.sh ] || { echo "::error title=gates-verify::scripts/bump-reproduces.sh missing from the sparse checkout"; exit 1; }
-            npmrc="$(mktemp)"; chmod 600 "$npmrc"
+            npmrc="$RUNNER_TEMP/bump.npmrc"; ( umask 077; : > "$npmrc" )
             printf '@boonty-io:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "$GH_TOKEN" > "$npmrc"
-            if shared/scripts/bump-reproduces.sh head "origin/$BASE" "$HEAD_SHA" "$version" "$npmrc"; then bump_ok=true; fi
-            rm -f "$npmrc"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          elif [ -n "$facts" ] && jq -e '.title | test("bump @boonty-io/ai-config")' "$facts" >/dev/null 2>&1; then
+            echo "::notice title=gates-verify::the title names an ai-config bump but the title, branch or fork check refused it; no bump exemption"
           fi
-          shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$content" "$facts" "$docs_only" "$bump_ok" | tee -a "$GITHUB_OUTPUT"
+
+      # The published `boonty-ai sync` runs here. This step's environment has
+      # no token: the parent shell of `sync` holds none for it to read, and
+      # the userconfig is deleted before `sync` starts.
+      - name: Reproduce an ai-config bump
+        id: bump
+        if: steps.pr.outputs.skip == 'false' && steps.facts.outputs.version != ''
+        env:
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
+          BASE: ${{ steps.pr.outputs.base }}
+          VERSION: ${{ steps.facts.outputs.version }}
+        run: |
+          set -uo pipefail
+          npmrc="$RUNNER_TEMP/bump.npmrc"
+          [ -x shared/scripts/bump-reproduces.sh ] || { rm -f "$npmrc"; echo "::error title=gates-verify::scripts/bump-reproduces.sh missing from the sparse checkout"; exit 1; }
+          bump_ok=false
+          if shared/scripts/bump-reproduces.sh head "origin/$BASE" "$HEAD_SHA" "$VERSION" "$npmrc"; then bump_ok=true; fi
+          rm -f "$npmrc"
+          echo "bump_ok=$bump_ok" >> "$GITHUB_OUTPUT"
+
+      - name: Decide
+        id: decide
+        if: steps.pr.outputs.skip == 'false'
+        env:
+          BASE: ${{ steps.pr.outputs.base }}
+          CONTENT: ${{ steps.facts.outputs.content }}
+          FACTS: ${{ steps.facts.outputs.facts }}
+          DOCS_ONLY: ${{ steps.facts.outputs.docs_only }}
+          BUMP_OK: ${{ steps.bump.outputs.bump_ok || 'false' }}
+        run: |
+          set -euo pipefail
+          shared/scripts/gates-verify.sh comments.json writers.txt "$BASE" "$CONTENT" "$FACTS" "$DOCS_ONLY" "$BUMP_OK" | tee -a "$GITHUB_OUTPUT"
 
       # !cancelled(): a Decide step that errors must not leave an earlier
       # `success` standing on this head; a run superseded by a newer one posts
