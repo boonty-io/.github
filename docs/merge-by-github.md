@@ -109,15 +109,17 @@ ai-config's dispatch opens carry no receipt. With no writer's receipt,
     the registry's;
   - the published release's own `boonty-ai sync`, run with an emptied
     environment in a scratch worktree at the merge base, reproduces every
-    other file of the head exactly. It runs in its own workflow step, whose
-    environment holds no token: the registry userconfig is written by the
-    step before and deleted before `sync` starts.
+    other file of the head exactly. It runs in a job of its own (`bump`), on
+    its own runner, whose token cannot post a status (`contents`,
+    `pull-requests` and `packages`, all read); the registry userconfig is
+    deleted before `sync` starts. `verify` holds `statuses: write` and takes
+    the `bump` verdict only for the head it verifies itself.
 
 Nothing from the PR is executed: the PR's files are read as data, and `sync`
 comes from the published package, which was gated in ai-config. A change in
 ai-config's own dependencies, or any edit beyond the version, leaves the PR
 `pending`, to be merged by hand. Every caller must grant `packages: read` (see
-step 1 below) before this workflow requests it, or the job fails at startup.
+step 1 below) before this workflow requests it, or the workflow fails at startup.
 
 **Where it is required.** Require `gates/verified` on each repository's
 integration branch only (`staging`; `main` for ai-config, this repository and
