@@ -94,9 +94,10 @@ RULES='
   def bump_version:
     (.title | capture("\\Achore\\(deps\\): bump @boonty-io/ai-config to v(?<v>[0-9]+\\.[0-9]+\\.[0-9]+)\\z").v);
   # The version is bound first, outside the `and` chain, so the rule does not
-  # depend on how a jq version parses `A and B as $v | C` (the jq on the CI
-  # runner refused the valid bump.json fixture with that form; macOS jq 1.7.1
-  # accepted it). No apostrophe in this block: it is one single-quoted string.
+  # depend on how a jq version parses `A and B as $v | C`. With that form the
+  # valid bump.json fixture returned pending on the CI runner (cause not
+  # isolated: jq errors go to /dev/null here) and passed on macOS jq 1.7.1.
+  # No apostrophe in this block: it is one single-quoted string.
   def exempt_bump:
     bump_version as $v
     | (.repo != "boonty-io/ai-config" and .repo != "boonty-io/.github"

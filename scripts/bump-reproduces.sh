@@ -5,8 +5,9 @@
 #   bump-reproduces.sh <repo-dir> <base-ref> <head-sha> <version> <npmrc>
 #
 # <repo-dir>  a full clone holding <base-ref> and <head-sha> (the PR head
-#             checkout, fetch-depth 0); only git reads it and only three
-#             package files are taken from the head.
+#             checkout, fetch-depth 0); git is the only tool run against it
+#             (reads, plus a scratch worktree added and removed there), and
+#             only three package files are taken from the head.
 # <npmrc>     a userconfig with the registry token; it is deleted before
 #             `sync` runs, and `sync` runs with an emptied environment.
 #
