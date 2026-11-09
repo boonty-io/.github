@@ -19,7 +19,7 @@ on:
   workflow_call:
     inputs:
       shared_ref:
-        description: Deprecated, ignored unless `job.workflow_sha` is empty. The workflow checks out its own commit (`job.workflow_sha`), so the `uses:` ref alone pins it. Still declared so callers that pass it keep validating.
+        description: Deprecated. The workflow checks out its own commit (`job.workflow_sha`) and reads this only when that property is empty. Still declared so callers on `@main` that pass it keep validating. Do not pass it with a SHA pin, because on-demand-guard counts it as a ref.
         required: false
         default: main
         type: string

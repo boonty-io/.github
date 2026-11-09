@@ -190,7 +190,8 @@ changes no consumer's CI until that consumer takes the new commit. The shared
 workflows check out their own scripts at `job.workflow_sha`, the commit the
 `uses:` line names, so the `shared_ref` input is deprecated: it is ignored
 unless that property is empty, and a run where it is empty logs a warning. A
-consumer that pins by commit passes no `shared_ref`. To test a branch of this
+consumer that pins by commit passes no `shared_ref`: the guard counts it as a
+ref, so `shared_ref: main` next to `@<sha>` is refused as a second ref. To test a branch of this
 repository from a consumer, point the `uses:` lines at that branch: the
 scripts follow the `uses:` ref. A `shared_ref` naming another branch is used
 only when `job.workflow_sha` is empty, and that run logs a warning.
@@ -198,9 +199,8 @@ only when `job.workflow_sha` is empty, and that run logs a warning.
 Dependabot keeps the pins current. `boonty-io/.github` has no tags, so
 Dependabot moves the pin to the latest commit on `main`. Its configuration is
 read from the consumer's default branch, so the entry lands there. Add the
-group to the consumer's existing `github-actions` entry (a second entry for
-the same directory and target branch is rejected), and set `target-branch` to
-the branch the consumer integrates on:
+group to the consumer's existing `github-actions` entry rather than a second
+one, and set `target-branch` to the branch the consumer integrates on:
 
 ```yaml
   - package-ecosystem: 'github-actions'
