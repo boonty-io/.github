@@ -71,6 +71,28 @@ The files endpoint reports paths, not file modes, so a symbolic link named
 `shared-learnings/x.md` would match too. That needs write access and adds
 nothing over the trust level above.
 
+**Lean receipts.** A docs-only PR on ai-config's lean lane (`shared/45`)
+carries `code-review` only. From boonty-io/ai-config#1520 on, `boonty-ai gate
+publish` posts a receipt for it with `"roster": "lean"` and
+`"gates": {"code-review": "pass"}`. That receipt is never counted as the four
+gates. It gives `success` only when:
+
+- its gates are exactly that one pass;
+- its base and `content_sha256` match the PR, as for a full receipt;
+- `scripts/lean-diff-ok.sh` measures merge-base..head as docs-only.
+
+That script accepts only paths on ai-config's lean list (`docs/**/*.md`,
+`shared-learnings/*.md`, `README.md`, `CONTRIBUTING.md`), with no nested
+`CLAUDE.md`, `CLAUDE.local.md` or `AGENTS.md` in any case, and only regular,
+non-executable files. It runs with replace refs and grafts switched off. Its
+rules are copies of ai-config `scripts/gate.ts` `LEAN_SAFE_PATHS`,
+`LEAN_NEVER_PATHS` and `LEAN_MODES`, kept in step by hand. This measure is the
+authority: the receipt's own claim does not count. The status only keeps the
+required check from blocking the merge. ai-config's review hook
+(`hooks/pr-gates-before-review.sh`, "THE LEAN RECEIPT": the lean roster
+"counts only on `gh pr ready`, never `gh pr merge`") stops an agent from
+merging, so a human merges the PR.
+
 **Where it is required.** Require `gates/verified` on each repository's
 integration branch only (`staging`; `main` for ai-config, this repository and
 pos-android-e2e_autotests; `develop` for pos-app-android). Never require it
