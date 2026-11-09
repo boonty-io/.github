@@ -1,11 +1,12 @@
 # ci-hint — make every required `ci/*` line on the PR page say something.
 #
 # Opt-in, reusable (`workflow_call`), called from the consumer's
-# `ci-request.yml` as a second job next to `ci-request.yml`, at the same pinned commit. It is a
-# separate workflow because it needs `statuses: write`, which a caller that
-# has not opted in does not grant — and a reusable workflow cannot ask for
-# more than its caller gives, so folding it into `ci-request.yml` would break
-# every consumer that has not opted in.
+# `ci-request.yml` as a second job next to `ci-request.yml`, at the same
+# pinned commit. It is a separate workflow because it needs
+# `statuses: write`, which a caller that has not opted in does not grant —
+# and a reusable workflow cannot ask for more than its caller gives, so
+# folding it into `ci-request.yml` would break every consumer that has not
+# opted in.
 #
 # Without it, an unrequested context and a running one both read "Expected —
 # Waiting for status to be reported", with nothing to click: a suite posts its

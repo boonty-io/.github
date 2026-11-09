@@ -190,7 +190,10 @@ changes no consumer's CI until that consumer takes the new commit. The shared
 workflows check out their own scripts at `job.workflow_sha`, the commit the
 `uses:` line names, so the `shared_ref` input is deprecated: it is ignored
 unless that property is empty, and a run where it is empty logs a warning. A
-consumer that pins by commit passes no `shared_ref`.
+consumer that pins by commit passes no `shared_ref`. To test a branch of this
+repository from a consumer, point the `uses:` lines at that branch: the
+scripts follow the `uses:` ref, and a `shared_ref` naming another branch no
+longer has any effect.
 
 Dependabot keeps the pins current. `boonty-io/.github` has no tags, so
 Dependabot moves the pin to the latest commit on `main`. Its configuration is
