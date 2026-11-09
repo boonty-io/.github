@@ -6,7 +6,7 @@
 #     - uses: actions/checkout@<sha>
 #     - id: verify-request
 #       if: github.event_name == 'workflow_dispatch'
-#       uses: boonty-io/.github/.github/actions/verify-ci-request@main
+#       uses: boonty-io/.github/.github/actions/verify-ci-request@<sha> # main
 #       with:
 #         pr: ${{ inputs.pr }}
 #         base: ${{ inputs.base }}

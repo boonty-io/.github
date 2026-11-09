@@ -65,12 +65,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'opened' && github.event.pull_request.draft)) }}
 jobs:
   request:
-    uses: boonty-io/.github/.github/workflows/ci-request.yml@main
+    uses: boonty-io/.github/.github/workflows/ci-request.yml@<sha> # main
     permissions: { contents: read, actions: write, pull-requests: write }
     with:
       workflows: tests.yml,ci.yml
   hint:
-    uses: boonty-io/.github/.github/workflows/ci-hint.yml@main
+    uses: boonty-io/.github/.github/workflows/ci-hint.yml@<sha> # main
     permissions: { contents: read, pull-requests: read, statuses: write }
     with:
       contexts: ci/tests,ci/build
@@ -122,7 +122,7 @@ commit, 5 in the rollup. So each suite's verdict job ends with the shared
       - name: Verdict
         run: …            # exits 1 when a required suite did not pass
       - if: always()
-        uses: boonty-io/.github/.github/actions/ci-status@main
+        uses: boonty-io/.github/.github/actions/ci-status@<sha> # main
         with:
           context: ci/tests
           job-status: ${{ job.status }}
@@ -163,7 +163,7 @@ Use the shared verifier rather than a local copy:
       - uses: actions/checkout@<sha>          # first: the guard refuses the reverse order
       - id: verify-request
         if: github.event_name == 'workflow_dispatch'
-        uses: boonty-io/.github/.github/actions/verify-ci-request@main
+        uses: boonty-io/.github/.github/actions/verify-ci-request@<sha> # main
         with:
           pr: ${{ inputs.pr }}
           base: ${{ inputs.base }}
@@ -181,6 +181,36 @@ dispatch input or `merge_group`, a missing or misplaced verify step, a missing
 `ci-status`, a status-posting workflow absent from `ci-request.yml`, and more
 than one `boonty-io/.github` ref. Lightweight PR-shaped checks (title, commit
 policy, docs impact) are not suites and may stay on `pull_request`.
+
+## Pinning `boonty-io/.github`
+
+A consumer pins every `boonty-io/.github` reference (shared workflows and
+actions) to one commit of `main`, written `@<sha> # main`. A merge here then
+changes no consumer's CI until that consumer takes the new commit. The shared
+workflows check out their own scripts at `job.workflow_sha`, the commit the
+`uses:` line names, so the `shared_ref` input is deprecated: it is ignored
+unless that property is empty, and a run where it is empty logs a warning. A
+consumer that pins by commit passes no `shared_ref`.
+
+Dependabot keeps the pins current. `boonty-io/.github` has no tags, so
+Dependabot moves the pin to the latest commit on `main`. Its configuration is
+read from the consumer's default branch, so the entry lands there. Add the
+group to the consumer's existing `github-actions` entry (a second entry for
+the same directory and target branch is rejected), and set `target-branch` to
+the branch the consumer integrates on:
+
+```yaml
+  - package-ecosystem: 'github-actions'
+    directories: ['/', '/.github/actions/*']
+    target-branch: 'staging'          # the integration branch
+    schedule: { interval: 'weekly' }
+    groups:
+      boonty-io-github:
+        patterns: ['boonty-io/.github*']
+```
+
+One grouped PR moves every reference together, so the guard's one-ref rule
+holds on the bump PR too.
 
 ## Runner routing (static tier)
 

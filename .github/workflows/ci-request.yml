@@ -51,7 +51,7 @@ on:
         default: '/ci'
         type: string
       shared_ref:
-        description: Ref of boonty-io/.github to take the decision script from. Pin to a branch only while testing that branch.
+        description: Deprecated, ignored unless `job.workflow_sha` is empty. The workflow checks out its own commit (`job.workflow_sha`), so the `uses:` ref alone pins it. Still declared so callers that pass it keep validating.
         required: false
         default: main
         type: string
@@ -78,11 +78,17 @@ jobs:
       go: ${{ steps.decide.outputs.go }}
       pr: ${{ steps.decide.outputs.pr }}
     steps:
+      - name: Warn when this workflow cannot see its own commit
+        if: job.workflow_sha == ''
+        env:
+          SHARED_REF: ${{ inputs.shared_ref }}
+        run: echo "::warning::job.workflow_sha is empty, so boonty-io/.github is checked out at '${SHARED_REF:-the default branch}', not at this workflow's own commit"
+
       - name: Check out the decision script
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: boonty-io/.github
-          ref: ${{ inputs.shared_ref }}
+          ref: ${{ job.workflow_sha || inputs.shared_ref }}
           sparse-checkout: scripts/ci-request-decide.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false

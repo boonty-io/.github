@@ -105,6 +105,20 @@ def good():
     return {"ci-request.yml": REQUEST, "tests.yml": SUITE, "lint-title.yml": OTHER}
 
 
+SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+def sha_pinned():
+    """GOOD as a caller pinned by commit: every boonty-io/.github reference at
+    `@<sha> # main` (the form Dependabot keeps), no `shared_ref` input."""
+    files = {}
+    for name, body in good().items():
+        body = body.replace("    with:\n      shared_ref: main\n", "").replace("      shared_ref: main\n", "")
+        assert "shared_ref" not in body, name
+        files[name] = body.replace("@main", f"@{SHA} # main")
+    return files
+
+
 def mutate(name, old, new):
     files = good()
     assert old in files[name], f"mutation did not apply: {old!r} not in {name}"
@@ -273,6 +287,25 @@ class Guard(unittest.TestCase):
     def test_status_poster_not_listed(self):
         files = good(); files["orphan.yml"] = SUITE.replace("ci/tests", "ci/orphan")
         self.refuses(files, "orphan.yml: posts a ci-status but is not listed in ci-request.yml")
+
+    def test_sha_pinned_caller_without_shared_ref(self):
+        code, out = run(sha_pinned())
+        self.assertEqual(code, 0, out)
+
+    def test_sha_pinned_trailing_comment_is_not_part_of_the_ref(self):
+        files = sha_pinned()
+        old = f"ci-status@{SHA} # main"
+        assert old in files["tests.yml"], "mutation did not apply"
+        files["tests.yml"] = files["tests.yml"].replace(old, f"ci-status@{SHA}  # pinned by Dependabot", 1)
+        code, out = run(files)
+        self.assertEqual(code, 0, out)
+
+    def test_sha_pinned_caller_with_one_ref_left_on_main(self):
+        files = sha_pinned()
+        old = f"ci-status@{SHA} # main"
+        assert old in files["tests.yml"], "mutation did not apply"
+        files["tests.yml"] = files["tests.yml"].replace(old, "ci-status@main", 1)
+        self.refuses(files, "boonty-io/.github is referenced at more than one ref")
 
     def test_mixed_shared_refs(self):
         self.refuses(mutate("tests.yml", "ci-status@main", "ci-status@feat/x"),

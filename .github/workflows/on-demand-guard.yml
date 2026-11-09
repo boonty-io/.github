@@ -4,9 +4,9 @@
 # dispatched suites and makes that suite's verdict job `need` it:
 #
 #   on-demand-guard:
-#     uses: boonty-io/.github/.github/workflows/on-demand-guard.yml@main
-#     with:
-#       shared_ref: main   # same ref as every other boonty-io/.github reference
+#     uses: boonty-io/.github/.github/workflows/on-demand-guard.yml@<sha> # main
+#
+# Pin the same commit on every boonty-io/.github reference; Dependabot moves them together.
 #
 # It fails when a suite is back on `pull_request`, lost a dispatch input or
 # `merge_group`, skips the request verification or the commit status, or when
@@ -19,7 +19,7 @@ on:
   workflow_call:
     inputs:
       shared_ref:
-        description: Ref of boonty-io/.github to take the guard script from.
+        description: Deprecated, ignored unless `job.workflow_sha` is empty. The workflow checks out its own commit (`job.workflow_sha`), so the `uses:` ref alone pins it. Still declared so callers that pass it keep validating.
         required: false
         default: main
         type: string
@@ -39,11 +39,17 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: .github/workflows
+      - name: Warn when this workflow cannot see its own commit
+        if: job.workflow_sha == ''
+        env:
+          SHARED_REF: ${{ inputs.shared_ref }}
+        run: echo "::warning::job.workflow_sha is empty, so boonty-io/.github is checked out at '${SHARED_REF:-the default branch}', not at this workflow's own commit"
+
       - name: Check out the guard
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: boonty-io/.github
-          ref: ${{ inputs.shared_ref }}
+          ref: ${{ job.workflow_sha || inputs.shared_ref }}
           path: .shared-github
           sparse-checkout: scripts/on-demand-guard.py
           sparse-checkout-cone-mode: false

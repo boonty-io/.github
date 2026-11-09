@@ -32,7 +32,10 @@ jobs:
           sha256sum --check --ignore-missing checksums.txt
           tar -xzf "actionlint_${v}_linux_amd64.tar.gz" actionlint
       - name: Lint every workflow, including the reusable ones
-        run: ./actionlint -color -shellcheck= -pyflakes=
+        # actionlint 1.7.12 does not know the `job.workflow_*` properties GitHub
+        # added on 2026-09-03; the fix (rhysd/actionlint#757) is merged but not
+        # released. Drop this -ignore when the pinned version carries it.
+        run: ./actionlint -color -shellcheck= -pyflakes= -ignore 'property "workflow_sha" is not defined in object type'
 
   decide-script:
     name: ci-request decision fixtures

@@ -19,7 +19,7 @@ concurrency:
 jobs:
   request:
     # Everything else is the shared workflow's decision.
-    uses: boonty-io/.github/.github/workflows/ci-request.yml@main
+    uses: boonty-io/.github/.github/workflows/ci-request.yml@<sha> # main
     permissions:
       contents: read
       actions: write
