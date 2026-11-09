@@ -148,7 +148,7 @@ hotfix PRs into such a `main` are not held by this check.
    jobs:
      verify:
        if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && startsWith(github.event.comment.body, 'boonty-gates/v1'))
-       uses: boonty-io/.github/.github/workflows/gates-verify.yml@main
+       uses: boonty-io/.github/.github/workflows/gates-verify.yml@<sha> # main
        permissions: { contents: read, pull-requests: read, statuses: write, packages: read }
    ```
 
