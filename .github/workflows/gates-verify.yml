@@ -100,8 +100,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # The registry token goes only to a temp userconfig, which
-      # scripts/bump-reproduces.sh deletes before `sync` starts.
+      # NPM_TOKEN is this job's token (packages read, no statuses: write). It
+      # is in this step's environment and in a temp userconfig, which
+      # scripts/bump-reproduces.sh deletes before `sync` starts under env -i.
       - name: Reproduce the bump
         id: reproduce
         if: steps.pr.outputs.version != ''
