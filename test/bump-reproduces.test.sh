@@ -159,7 +159,7 @@ expect "a package file over 2 MB, same on both sides" "$d" 0.2.0 1
 # sync writes a file the head does not carry
 d="$(repo synth)"
 expect "sync writes a file the head lacks" "$d" 0.2.0 1 STUB_EXTRA=extra.txt
-# no lockfile on either side: not a pnpm consumer
+# no lockfile on either side: refused
 d="$work/nolockboth"; git init -q -b main "$d"; files "$d" 0.1.0 "$INT_A"; rm "$d/pnpm-lock.yaml"; commit "$d" base
 git -C "$d" switch -q -c pr; files "$d" 0.2.0 "$INT_A"; rm "$d/pnpm-lock.yaml"; commit "$d" bump
 expect "no lockfile on either side" "$d" 0.2.0 1
