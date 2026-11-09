@@ -109,7 +109,9 @@ ai-config's dispatch opens carry no receipt. With no writer's receipt,
     the registry's;
   - the published release's own `boonty-ai sync`, run with an emptied
     environment in a scratch worktree at the merge base, reproduces every
-    other file of the head exactly.
+    other file of the head exactly. It runs in its own workflow step, whose
+    environment holds no token: the registry userconfig is written by the
+    step before and deleted before `sync` starts.
 
 Nothing from the PR is executed: the PR's files are read as data, and `sync`
 comes from the published package, which was gated in ai-config. A change in
