@@ -11,7 +11,8 @@
 #      version AND sha256, so a bumped pin never hits a stale entry.
 #   2. On a miss, downloads it with `curl --retry 5 --retry-all-errors
 #      --retry-delay 10`, and saves it to the cache straight away, so a later
-#      failure in the calling job does not throw the download away.
+#      failure in the calling job does not throw the download away. A failed
+#      save is ignored: the install has already succeeded.
 #   3. Checks the tarball against `sha256` on EVERY run, cache hit included.
 #      The cache holds the tarball, not the extracted binary, precisely so the
 #      pinned checksum is the last word whichever path supplied the bytes.
@@ -19,6 +20,15 @@
 #      which goes on PATH. Never the workspace: GITHUB_PATH prepends, so a
 #      workspace dir on PATH lets any committed file named `grep` shadow the
 #      system binary for every later step.
+#
+# CACHE SCOPE: a run restores only caches saved on its own ref, on the
+# repository's default branch, or (pull_request only) on its base branch.
+# A workflow_dispatch run on a fresh PR branch therefore sees only the
+# default branch's entries: seed them there with a scheduled workflow
+# (see docs/release-tool-cache.md). GitHub-hosted and Blacksmith runners keep
+# separate caches, so seed on each runner type the install jobs use.
+#
+# Linux runners only (sha256sum, GNU install).
 #
 # Usage (pin the action by commit, like ci-status and verify-ci-request):
 #
@@ -87,7 +97,11 @@ runs:
         CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
       run: '"$GITHUB_ACTION_PATH/install.sh" install'
 
+    # The install already succeeded; a cache-service error here (or "another
+    # job may be creating this cache" from a concurrent save of the same key)
+    # must not redden the caller.
     - if: steps.install.outputs.save == 'true'
+      continue-on-error: true
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.prep.outputs.tarball }}
