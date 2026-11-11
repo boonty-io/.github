@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Tests for .github/actions/install-release-tool/install.sh with a fake curl.
+# Tests for .github/actions/install-release-tool (install.sh with a fake curl,
+# plus the save-step wiring in action.yml). Needs GNU sha256sum, bash 4+ and
+# python3 with PyYAML, as on ubuntu-latest.
 # shellcheck disable=SC2016,SC2034  # check() evals its single-quoted condition later, by design
 # Run: test/install-release-tool.test.sh
 set -uo pipefail
@@ -68,6 +70,8 @@ check "miss: tarball kept for the cache save" '[ -f "$R/temp/release-tools/tool-
 runner; mkdir -p "$R/temp/release-tools"; run install CACHE_HIT= RETRY_DELAY=; rc=$?
 check "retry flags: --retry 5 --retry-all-errors --retry-delay 10 -f" \
   'grep -q -- "--retry 5 --retry-all-errors --retry-delay 10" "$R/log" && grep -q -- "-fsSL" "$R/log"'
+check "https only, redirects included" \
+  'grep -q -- "--proto =https --proto-redir =https" "$R/log"'
 
 # --- cache hit, valid tarball: no network
 runner; mkdir -p "$R/temp/release-tools"; cp "$work/release.tar.gz" "$R/temp/release-tools/tool-1.2.3.tar.gz"
@@ -107,7 +111,7 @@ runner; mkdir -p "$R/temp/release-tools"; run install CACHE_HIT= MEMBER=missing;
 check "member: absent member fails" '[ $rc = 1 ]'
 
 # --- input validation (prep and install both refuse)
-for bad in 'NAME=to;ol' 'NAME=Tool' 'NAME=' 'VERSION=1 2' 'VERSION=$(id)' 'SHA256=ABC' "SHA256=${good_sha^^}" "SHA256=${good_sha}0"; do
+for bad in 'NAME=to;ol' 'NAME=Tool' 'NAME=' 'VERSION=1 2' 'VERSION=$(id)' 'SHA256=ABC' "SHA256=$(printf %s "$good_sha" | tr a-f A-F)" "SHA256=${good_sha}0"; do
   for cmd in prep install; do
     runner; mkdir -p "$R/temp/release-tools"; run "$cmd" CACHE_HIT= "$bad"; rc=$?
     check "$cmd refuses $bad" '[ $rc = 1 ] && [ ! -s "$R/log" ]'
@@ -115,6 +119,18 @@ for bad in 'NAME=to;ol' 'NAME=Tool' 'NAME=' 'VERSION=1 2' 'VERSION=$(id)' 'SHA25
 done
 runner; mkdir -p "$R/temp/release-tools"; run install CACHE_HIT= URL=http://example.test/t.tgz; rc=$?
 check "install refuses a non-https url" '[ $rc = 1 ] && [ ! -s "$R/log" ]'
+
+# --- action.yml: the save step runs only when install.sh asked for it, and a
+# failed save cannot redden the caller.
+save_step="$(python3 - "$here/../.github/actions/install-release-tool/action.yml" <<'PY'
+import sys, yaml
+steps = yaml.safe_load(open(sys.argv[1]))["runs"]["steps"]
+save = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache/save@")]
+print(len(save), save[0].get("if") if save else "", save[0].get("continue-on-error") if save else "")
+PY
+)"
+check "action.yml: one save step, gated on save == 'true', continue-on-error" \
+  '[ "$save_step" = "1 steps.install.outputs.save == '"'"'true'"'"' True" ]'
 
 echo "$((n - fail))/$n passed"
 [ "$fail" = 0 ]

@@ -22,11 +22,13 @@ validate() {
 
 # shellcheck disable=SC2153  # URL comes from the action env
 download() {
-  # --retry-all-errors retries a 5xx (the 2026-11-09 failure) and a 404 alike;
-  # -f keeps an HTTP error body from landing on disk as a "successful" file.
+  # --retry already retries transient errors, HTTP 504 (the 2026-11-09
+  # failure) included; --retry-all-errors also retries the rest, such as a
+  # connection reset mid-body or a 404. -f keeps an HTTP error body from
+  # landing on disk as a "successful" file.
   # Five retries 10 s apart ride out a blip; a long outage still fails, which
   # is what the cache is for.
-  "$CURL" --proto '=https' --tlsv1.2 -fsSL \
+  "$CURL" --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
     --retry 5 --retry-all-errors --retry-delay "$RETRY_DELAY" \
     -o "$TARBALL" "$URL"
 }
