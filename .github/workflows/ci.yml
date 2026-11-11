@@ -59,7 +59,7 @@ jobs:
       - name: PyYAML for the install-release-tool tests
         run: python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet --user 'pyyaml==6.0.2'
       - run: test/install-release-tool.test.sh
-      - run: test/seed-release-tools-template.test.sh
+      - run: test/seed-drift-check.test.sh
 
   on-demand-guard:
     name: on-demand guard cases

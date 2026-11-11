@@ -27,4 +27,4 @@ A seeder's workflow file reaches the default branch only when the default branch
 
 ## Bumping a tool
 
-Take the new sha256 from the `*_checksums.txt` asset of the same release, never from a tarball you downloaded yourself. Change the version, url and sha256 together, in the installing workflow and in the seeder. The seeder's drift check reads the seeder's own `url` and `sha256` inputs, and goes red when one of them appears in no other workflow of the repository.
+Take the new sha256 from the `*_checksums.txt` asset of the same release, never from a tarball you downloaded yourself. Change the version, url and sha256 together, in the installing workflow and in the seeder. The seeder's first step, `.github/actions/seed-drift-check`, goes red unless each seed step has a twin `install-release-tool` step, with the same name, version, url and sha256, in another workflow of the repository.

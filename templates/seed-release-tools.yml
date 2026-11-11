@@ -5,14 +5,14 @@
 # boonty-io/.github/.github/actions/install-release-tool, then:
 #   - list in `matrix.runner` every runner label an install job uses
 #     (GitHub-hosted and Blacksmith runners keep separate caches);
-#   - add one install step per tool, with the SAME version, url and sha256 as
-#     the workflow that installs it;
-# A seeder that pins something else seeds a key no install reads. The drift
-# check reads this file's own url and sha256 inputs and fails unless each one
-# appears verbatim in another workflow, which turns that mistake into a red
-# scheduled run instead of a silent cache miss. It cannot tell which other
-# workflow should carry a pin: it checks presence, not the pairing.
-# test/seed-release-tools-template.test.sh runs the check against fixtures.
+#   - add one install step per tool, with the SAME name, version, url and
+#     sha256 as the workflow that installs it.
+#
+# A seed step that differs from its installer in name, version or sha256
+# seeds a cache key no install reads. The seed-drift-check step fails the
+# run unless each seed step has a twin, with the same name, version, url and
+# sha256, in another workflow, which turns that mistake into a red scheduled
+# run instead of a silent cache miss. test/seed-drift-check.test.sh pins it.
 #
 # Why it exists: docs/release-tool-cache.md.
 name: seed-release-tools
@@ -38,25 +38,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Seeded pins match the workflows that install them
-        # Reads this file's own `url:` and `sha256:` inputs, so there is no
-        # second list to keep in step. The cache key is name, version and
-        # sha256, and the url carries the version.
-        run: |
-          set -euo pipefail
-          self=.github/workflows/seed-release-tools.yml
-          mapfile -t pins < <(sed -nE "s/^[[:space:]]+(url|sha256):[[:space:]]*'?([^' #]+)'?.*/\2/p" "$self")
-          [ "${#pins[@]}" -gt 0 ] || { echo "::error::no url or sha256 input found in $self"; exit 1; }
-          others=()
-          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
-            [ -e "$f" ] && [ "$f" != "$self" ] && others+=("$f")
-          done
-          for pin in "${pins[@]}"; do
-            grep -qF -- "$pin" "${others[@]}" /dev/null || {
-              echo "::error::$pin, seeded by $self, is in no other workflow: this seeds a key no install reads"
-              exit 1
-            }
-          done
+      # Fails unless each seed step below has a twin, same name, version,
+      # url and sha256, in another workflow here.
+      - uses: boonty-io/.github/.github/actions/seed-drift-check@<sha> # main
       - uses: boonty-io/.github/.github/actions/install-release-tool@<sha> # main
         with:
           name: actionlint
