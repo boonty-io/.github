@@ -1,6 +1,6 @@
 # Release-tool installs: cache, retry, checksum
 
-`.github/actions/install-release-tool` installs a pinned binary from a release tarball. On 2026-11-09, `github.com/<owner>/<repo>/releases/download/...` returned HTTP 504 on and off for hours while `api.github.com` stayed up. Every job that downloaded actionlint or gitleaks at run time failed before doing any work. The action makes such a job depend on the release CDN only when its cache has nothing.
+`.github/actions/install-release-tool` installs a pinned binary from a release tarball. On 2026-11-09, `github.com/<owner>/<repo>/releases/download/...` returned HTTP 504 on and off while `api.github.com` stayed up. Jobs that downloaded actionlint or gitleaks at run time failed before doing any work, for example webapp-admin#3035 (gitleaks) and ai-config#1522 (actionlint). The action makes such a job depend on the release CDN only when its cache has nothing.
 
 ## What the action does
 

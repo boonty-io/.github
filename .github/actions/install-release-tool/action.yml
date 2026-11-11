@@ -2,9 +2,9 @@
 # release tarball, without depending on the release CDN being up.
 #
 # Why: on 2026-11-09 github.com/<owner>/<repo>/releases/download/... returned
-# HTTP 504 for hours while api.github.com stayed up. Every job that installed
-# actionlint or gitleaks from a release tarball failed before doing any work
-# (webapp-admin#3035, ai-config#1512, ai-config#1522).
+# HTTP 504 on and off while api.github.com stayed up. Jobs that installed
+# actionlint or gitleaks from a release tarball failed before doing any work,
+# for example webapp-admin#3035 (gitleaks) and ai-config#1522 (actionlint).
 #
 # What it does:
 #   1. Restores the tarball from the Actions cache. The key carries name,
