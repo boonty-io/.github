@@ -22,22 +22,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install actionlint (checksum-verified against the release manifest)
-        run: |
-          set -euo pipefail
-          v=1.7.12
-          base="https://github.com/rhysd/actionlint/releases/download/v${v}"
-          curl -fsSL -o "actionlint_${v}_linux_amd64.tar.gz" "${base}/actionlint_${v}_linux_amd64.tar.gz"
-          curl -fsSL -o checksums.txt "${base}/actionlint_${v}_checksums.txt"
-          sha256sum --check --ignore-missing checksums.txt
-          tar -xzf "actionlint_${v}_linux_amd64.tar.gz" actionlint
+      # The local copy of the shared action, so this job exercises the commit
+      # under review. sha256 is the linux_amd64 line of
+      # actionlint_1.7.12_checksums.txt in the same release.
+      - name: Install actionlint (cached, retried, sha256-verified)
+        uses: ./.github/actions/install-release-tool
+        with:
+          name: actionlint
+          version: 1.7.12
+          url: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          sha256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
       - name: Lint every workflow, including the reusable ones
         # actionlint 1.7.12 does not know the `job.workflow_*` properties GitHub
         # added on 2026-09-03. The upstream fix, rhysd/actionlint#707, is an open,
         # unmerged PR as of 2026-11-09 (`gh pr view 707 -R rhysd/actionlint
         # --json state`). Drop this -ignore once a released actionlint accepts
         # `job.workflow_sha` and ci.yml pins that release.
-        run: ./actionlint -color -shellcheck= -pyflakes= -ignore 'property "workflow_sha" is not defined in object type'
+        run: actionlint -color -shellcheck= -pyflakes= -ignore 'property "workflow_sha" is not defined in object type'
 
   decide-script:
     name: ci-request decision fixtures
@@ -55,6 +56,7 @@ jobs:
       - run: test/lean-diff-ok.test.sh
       - run: test/bump-reproduces.test.sh
       - run: test/gate-content-hash.test.sh
+      - run: test/install-release-tool.test.sh
 
   on-demand-guard:
     name: on-demand guard cases
