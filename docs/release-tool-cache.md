@@ -23,7 +23,8 @@ A seeder's workflow file reaches the default branch only when the default branch
 
 - `actions/setup-*` tool-cache downloads, Gradle and Android SDK downloads, and container image pulls also depend on remote hosts. The action does not touch them.
 - An outage longer than about a minute on a cold cache still fails the run.
+- A red scheduled seeder run notifies only through GitHub's default workflow-failure email, which goes to whoever last changed the cron. A seeder that keeps failing leaves the cache cold without anyone noticing.
 
 ## Bumping a tool
 
-Take the new sha256 from the `*_checksums.txt` asset of the same release, never from a tarball you downloaded yourself. Change the version, url and sha256 together, in the installing workflow and in the seeder. The seeder's drift check goes red when the two disagree.
+Take the new sha256 from the `*_checksums.txt` asset of the same release, never from a tarball you downloaded yourself. Change the version, url and sha256 together, in the installing workflow and in the seeder. The seeder's drift check goes red when the url or the sha256 it seeds is missing from the installing workflow.

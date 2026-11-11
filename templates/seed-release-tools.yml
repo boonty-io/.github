@@ -6,8 +6,8 @@
 #   - list in `matrix.runner` every runner label an install job uses
 #     (GitHub-hosted and Blacksmith runners keep separate caches);
 #   - add one install step per tool, with the SAME version, url and sha256 as
-#     the workflow that installs it, and that workflow's path in the drift
-#     check. A seeder that pins something else seeds a key nobody reads; the
+#     the workflow that installs it, and its url and sha256 in the drift
+#     check, which reads them in that workflow. A seeder that pins something else seeds a key nobody reads; the
 #     check turns that into a red scheduled run instead of a silent miss.
 #
 # Why it exists: docs/release-tool-cache.md.
@@ -37,7 +37,13 @@ jobs:
       - name: Seeded pins match the workflows that install them
         run: |
           set -euo pipefail
-          grep -qF 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8 .github/workflows/ci.yml
+          # The cache key is name, version and sha256: the url carries the
+          # version, so both must appear in the installing workflow verbatim.
+          for pin in \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8; do
+            grep -qF "$pin" .github/workflows/ci.yml || { echo "::error::$pin not in .github/workflows/ci.yml"; exit 1; }
+          done
       - uses: boonty-io/.github/.github/actions/install-release-tool@<sha> # main
         with:
           name: actionlint
