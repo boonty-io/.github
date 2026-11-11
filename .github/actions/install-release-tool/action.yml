@@ -1,0 +1,108 @@
+# install-release-tool — install a pinned, checksum-verified binary from a
+# release tarball, without depending on the release CDN being up.
+#
+# Why: on 2026-11-09 github.com/<owner>/<repo>/releases/download/... returned
+# HTTP 504 on and off while api.github.com stayed up. Jobs that installed
+# actionlint or gitleaks from a release tarball failed before doing any work,
+# for example webapp-admin#3035 (gitleaks) and ai-config#1522 (actionlint).
+#
+# What it does:
+#   1. Restores the tarball from the Actions cache. The key carries name,
+#      version AND sha256, so a bumped pin never hits a stale entry.
+#   2. On a miss, downloads it with `curl --retry 5 --retry-all-errors
+#      --retry-delay 10`, and saves it to the cache straight away, so a later
+#      failure in the calling job does not throw the download away. A failed
+#      save is ignored: the install has already succeeded.
+#   3. Checks the tarball against `sha256` on EVERY run, cache hit included.
+#      The cache holds the tarball, not the extracted binary, precisely so the
+#      pinned checksum is the last word whichever path supplied the bytes.
+#   4. Extracts `member` and installs it into $RUNNER_TEMP/release-tools/bin,
+#      which goes on PATH. Never the workspace: GITHUB_PATH prepends, so a
+#      workspace dir on PATH lets any committed file named `grep` shadow the
+#      system binary for every later step.
+#
+# CACHE SCOPE: a run restores only caches saved on its own ref, on the
+# repository's default branch, or (pull_request only) on its base branch.
+# A workflow_dispatch run on a fresh PR branch therefore sees only the
+# default branch's entries: seed them there with a scheduled workflow
+# (see docs/release-tool-cache.md). GitHub-hosted and Blacksmith runners keep
+# separate caches, so seed on each runner type the install jobs use.
+#
+# Linux runners only (sha256sum, GNU install).
+#
+# Usage (pin the action by commit, like ci-status and verify-ci-request):
+#
+#     - uses: boonty-io/.github/.github/actions/install-release-tool@<sha> # main
+#       with:
+#         name: actionlint
+#         version: 1.7.12
+#         url: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+#         sha256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+#
+# BUMPING a tool: take `sha256` from the `*_checksums.txt` asset of the SAME
+# release, never from a tarball you downloaded yourself (that is
+# trust-on-first-use). A stale pin fails safe; a wrong one fails closed.
+name: install-release-tool
+description: Install a pinned, sha256-verified binary from a release tarball, cached and retried
+
+inputs:
+  name:
+    description: Binary name. Also the cache-key prefix. Lowercase letters, digits, `-` and `_`.
+    required: true
+  version:
+    description: Tool version, as pinned by the caller. Part of the cache key.
+    required: true
+  url:
+    description: HTTPS URL of the `.tar.gz` release asset.
+    required: true
+  sha256:
+    description: Expected sha256 of the tarball, 64 lowercase hex characters.
+    required: true
+  member:
+    description: Path of the binary inside the tarball. Defaults to `name`.
+    required: false
+    default: ''
+
+outputs:
+  path:
+    description: Absolute path of the installed binary.
+    value: ${{ steps.install.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - id: prep
+      shell: bash
+      env:
+        NAME: ${{ inputs.name }}
+        VERSION: ${{ inputs.version }}
+        SHA256: ${{ inputs.sha256 }}
+      run: '"$GITHUB_ACTION_PATH/install.sh" prep'
+
+    - id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.prep.outputs.tarball }}
+        key: ${{ steps.prep.outputs.key }}
+
+    - id: install
+      shell: bash
+      env:
+        NAME: ${{ inputs.name }}
+        VERSION: ${{ inputs.version }}
+        URL: ${{ inputs.url }}
+        SHA256: ${{ inputs.sha256 }}
+        MEMBER: ${{ inputs.member }}
+        TARBALL: ${{ steps.prep.outputs.tarball }}
+        CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: '"$GITHUB_ACTION_PATH/install.sh" install'
+
+    # The install already succeeded; a cache-service error here (or "another
+    # job may be creating this cache" from a concurrent save of the same key)
+    # must not redden the caller.
+    - if: steps.install.outputs.save == 'true'
+      continue-on-error: true
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.prep.outputs.tarball }}
+        key: ${{ steps.prep.outputs.key }}

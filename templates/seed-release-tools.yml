@@ -1,0 +1,49 @@
+# seed-release-tools — keep install-release-tool's cache warm on the default
+# branch, where every branch's runs can read it.
+#
+# Copy to .github/workflows/seed-release-tools.yml in a repository that calls
+# boonty-io/.github/.github/actions/install-release-tool, then:
+#   - list in `matrix.runner` every runner label an install job uses
+#     (GitHub-hosted and Blacksmith runners keep separate caches);
+#   - add one install step per tool, with the SAME name, version, url and
+#     sha256 as the workflow that installs it.
+#
+# A seed step that differs from its installer in name, version or sha256
+# seeds a cache key no install reads. The seed-drift-check step fails the
+# run unless each seed step has a twin, with the same name, version, url and
+# sha256, in another workflow, which turns that mistake into a red scheduled
+# run instead of a silent cache miss. test/seed-drift-check.test.sh pins it.
+#
+# Why it exists: docs/release-tool-cache.md.
+name: seed-release-tools
+
+on:
+  schedule:
+    - cron: '17 4 * * *' # daily: an entry unused for 7 days is evicted
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    name: seed (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Fails unless each seed step below has a twin, same name, version,
+      # url and sha256, in another workflow here.
+      - uses: boonty-io/.github/.github/actions/seed-drift-check@<sha> # main
+      - uses: boonty-io/.github/.github/actions/install-release-tool@<sha> # main
+        with:
+          name: actionlint
+          version: 1.7.12
+          url: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          sha256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8

@@ -1,0 +1,20 @@
+# seed-drift-check — the first step of a seed-release-tools workflow (see
+# templates/seed-release-tools.yml): fail unless every install-release-tool
+# step in the seeder has a twin, same name, version, url and sha256, in
+# another workflow of the repository. Run after actions/checkout.
+name: seed-drift-check
+description: Fail when a seed-release-tools step would seed a cache key no install reads
+
+inputs:
+  seeder:
+    description: Path of the seeder workflow, relative to the checkout.
+    required: false
+    default: .github/workflows/seed-release-tools.yml
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SEEDER: ${{ inputs.seeder }}
+      run: '"$GITHUB_ACTION_PATH/check.sh" "$SEEDER"'
