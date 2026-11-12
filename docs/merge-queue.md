@@ -31,6 +31,17 @@ where a `merge_queue` rule is present (step S2 of the merge-queue epic).
    missing context removes the entry, and the entries behind it are rebuilt
    without it. A push to a queued PR removes it from the queue.
 
+Two ways to land outside this flow remain, and neither is closed by the queue:
+
+- A ruleset bypass actor with `bypass_mode: always` (webapp-core's
+  RepositoryRole 5, admin) can still merge straight to the branch, as it can
+  bypass strict today. Use it only for the rollback below, on the owner's go.
+- A bot or script that merges with `gh pr merge --auto --squash` (bump bots,
+  `bump-sweep.sh`) no longer merges directly on a queue branch: GitHub's
+  queue decides the merge, so such a call is expected to enqueue the PR. Its
+  exact behaviour is a pilot check, and each bot moves to the enqueue command
+  above (epic step S7).
+
 A PR whose base moved still needs a rebase when it **conflicts** (`DIRTY`):
 `gh pr update-branch <n> --rebase` or a local rebase, then gates and CI on the
 new head as for any new head. `BEHIND` alone is not a reason to rebase.
