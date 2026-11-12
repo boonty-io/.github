@@ -185,7 +185,7 @@ on:
       pr:       { description: Pull request number,      required: false, type: string }
       base:     { description: Base branch of the PR,    required: false, type: string }
       head_sha: { description: Head sha when requested,  required: false, type: string }
-      runner:   { description: github | blacksmith,      required: false, type: string, default: '' }
+      runner:   { description: github | blacksmith | macmini, required: false, type: string, default: '' }
   merge_group:
 ```
 
@@ -197,7 +197,13 @@ its base is not `inputs.base` or its head is not the commit checked out —
 otherwise anyone with write access could dispatch the suite by hand with
 `base=<head sha>`, get an empty diff, and certify a code commit as docs-only. Heavy jobs use
 `runs-on: ${{ inputs.runner == 'github' && 'ubuntu-latest' || '<blacksmith label>' }}`
-so a runner-specific failure can be reproduced on the other pool.
+so a runner-specific failure can be reproduced on the other pool. A job that
+can also run on the office Mac mini (arm64 Linux, see "Runner routing") adds a
+third arm in front, so an empty or unknown `runner` still lands on Blacksmith:
+
+```yaml
+runs-on: ${{ inputs.runner == 'macmini' && fromJSON('{"group":"macmini","labels":["self-hosted","macmini-linux"]}') || (inputs.runner == 'github' && 'ubuntu-latest' || '<blacksmith label>') }}
+```
 
 Use the shared verifier rather than a local copy:
 
@@ -267,6 +273,14 @@ holds on the bump PR too.
   cache-bound) → `blacksmith-4vcpu-ubuntu-2404` (or the `-arm` variant for
   Node-only repos; ARM is 0.625 of the x64 price). Public repos stay on
   `ubuntu-latest`.
+- `runner=macmini` (opt-in per dispatch, never the default) → the `macmini`
+  runner group: ephemeral arm64 Linux runners on the office Mac mini, two jobs
+  at a time, shared with local `boonty-ai ci:remote` runs. The group admits
+  only the internal repos it lists, never a public one. Each runner has its own
+  Docker engine, so `services:` containers work on `localhost`. Jobs that need
+  x86_64 stay on Blacksmith whatever `runner` says: the Android emulator
+  (KVM) and steps that download `linux_amd64` binaries. Setup lives in
+  boonty-io/ci-runners.
 
 ## Making it enforceable
 
