@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the "Post the pending lines" step of .github/workflows/ci-hint.yml against a
-# fake `gh`: on a label or `/ci`, a context that already reads success stays success
-# (ci-request.yml does not dispatch that suite again), unless `/ci force`.
+# fake `gh`: on a label or `/ci`, a context that already carries a verdict keeps it
+# (ci-request.yml may not dispatch that suite again), unless `/ci force`.
 # Needs bash 4+, jq and python3 with PyYAML, as on ubuntu-latest.
 # Run: test/ci-hint-post.test.sh
 set -uo pipefail
@@ -35,21 +35,21 @@ SH
 chmod +x "$work/bin/gh"
 
 OLD=2026-11-03T20:00:00Z
-ROWS='[{"context":"ci/a","created_at":"'$OLD'","description":"passed (workflow_dispatch)","state":"success"},{"context":"ci/b","created_at":"'$OLD'","description":"failed (workflow_dispatch)","state":"failure"}]'
+ROWS='[{"context":"ci/a","created_at":"'$OLD'","description":"passed (workflow_dispatch)","state":"success"},{"context":"ci/b","created_at":"'$OLD'","description":"failed (workflow_dispatch)","state":"failure"},{"context":"ci/c","created_at":"'$OLD'","description":"Not run yet: add the ci:run label or comment /ci","state":"pending"}]'
 run_case() {
   local d="$work/$1"; mkdir -p "$d/ws/scripts"; : > "$d/log"
   cp "$root/scripts/ci-hint-should-post.sh" "$d/ws/scripts/"
   (cd "$d/ws" && env PATH="$work/bin:$PATH" GH_LOG="$d/log" GITHUB_REPOSITORY=o/r STATUSES="$ROWS" \
-    GO=true SOURCE="$2" FORCE="$3" PR=9 STARTED=2026-11-03T21:00:00Z CONTEXTS=ci/a,ci/b LABEL=ci:run COMMAND=/ci \
+    GO=true SOURCE="$2" FORCE="$3" PR=9 STARTED=2026-11-03T21:00:00Z CONTEXTS=ci/a,ci/b,ci/c LABEL=ci:run COMMAND=/ci \
     DOCS=https://example.invalid bash -e "$work/step.sh" >"$d/out" 2>&1) || echo "exit $?" >> "$d/log"
   LOG="$(cat "$d/log")"
 }
 has() { printf '%s\n' "$LOG" | grep -qxF -- "$1"; }
 
 run_case label label false
-if ! has 'pending ci/a' && has 'pending ci/b'; then ok "label: success left alone, failure set to running"; else ko "label: $LOG"; fi
+if ! has 'pending ci/a' && ! has 'pending ci/b' && has 'pending ci/c'; then ok "label: both verdicts left alone, the unrun context set to running"; else ko "label: $LOG"; fi
 run_case force comment true
-if has 'pending ci/a' && has 'pending ci/b'; then ok "/ci force: both set to running"; else ko "force: $LOG"; fi
+if has 'pending ci/a' && has 'pending ci/b' && has 'pending ci/c'; then ok "/ci force: all set to running"; else ko "force: $LOG"; fi
 
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]

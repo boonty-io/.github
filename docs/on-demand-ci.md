@@ -31,8 +31,10 @@ dispatches a suite, `ci-request.yml` reads that suite's `workflow_dispatch`
 runs on the PR head (`scripts/ci-request-already-ran.sh`, tested by
 `test/ci-request-already-ran.test.sh` and `test/ci-request-dispatch.test.sh`):
 
-- a run still queued or in progress, or a newest run that succeeded: the suite
-  is not dispatched, and one PR comment links those runs;
+- a run still queued or in progress (created in the last 6 hours; an older one
+  is stuck, for example with no runner, and does not count), or a newest run
+  that succeeded: the suite is not dispatched, and one PR comment links those
+  runs;
 - no run on this head (a new push or a rebase: new code), or a newest run that
   failed, was cancelled or never started: the suite is dispatched as before;
 - the runs cannot be read: the suite is dispatched (a wasted run costs less than
@@ -44,6 +46,22 @@ regardless, for a suite that passed but should run again, such as one that
 depends on outside state. A new commit with the same tree as one that passed
 (an amended message, an empty commit) is still a new head and runs: its
 statuses live on the old commit.
+
+Limits, by design:
+
+- the skip trusts a run's conclusion. Every suite posts its own `ci/*` verdict
+  (the guard checks that), so a run that succeeded has posted `success`; a
+  suite that exits green after posting `failure` would read as passed, and
+  `/ci force` re-runs it;
+- runs are matched on the head commit, not on the PR: two PRs with the same head
+  (a stacked PR) share one verdict, as they share the commit statuses;
+- two requests seconds apart can both dispatch: a dispatched run shows in the
+  API a few seconds after `gh workflow run` returns. The consumer's `request`
+  concurrency group already runs requests for one PR one after the other,
+  which leaves only that window;
+- the `ready` path is unchanged: marking a PR ready never re-runs a head that
+  was dispatched before, even one that failed. A label or `/ci` re-runs the
+  failed suites.
 
 ### Opt-in: make every required line say something (`ci-hint.yml`)
 
@@ -59,9 +77,11 @@ lists:
   running", linking the head branch's dispatched runs, so the line is
   clickable while the suite runs. It never overwrites a status posted after
   the request, and on "ready" never a real verdict (nothing is dispatched for
-  a head that already ran). On a label or `/ci` it never overwrites a success
-  either, since that suite is not dispatched again; `/ci force` does. A partial
-  `/ci tests.yml` posts nothing.
+  a head that already ran). On a label or `/ci` it never overwrites a real
+  verdict either: `ci-request.yml` may skip that suite as passed or running, and
+  the hint cannot tell which suite a context belongs to, so a failed line keeps
+  reading "failed" until the re-run posts. `/ci force` dispatches every suite
+  and overwrites. A partial `/ci tests.yml` posts nothing.
 
 The suite's own `ci-status` step replaces the line with the verdict; a pending
 line never satisfies a required check. The per-context rule is

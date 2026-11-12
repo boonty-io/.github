@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Has one suite already answered for one head? Pure function of the
 # `GET actions/workflows/<suite>/runs?head_sha=<sha>&event=workflow_dispatch`
-# answer (path in $1, newest run first), tested by
+# answer (path in $1, newest run first; $2 = now in epoch seconds, default the
+# clock), tested by
 # test/ci-request-already-ran.test.sh. Prints `key=value` lines:
 #
-#   skip=true why=running url=<run>   a run of the suite on this head is queued or in progress
+#   skip=true why=running url=<run>   a run of the suite on this head is queued or in progress,
+#                                     created less than 6 hours ago (older is stuck: no job runs that long)
 #   skip=true why=passed url=<run>    the newest run of the suite on this head succeeded
 #   skip=false                        no run yet, or the newest one failed, was cancelled or never started
 #
@@ -17,7 +19,10 @@ runs="${1:-}"
 if [ -z "$runs" ] || [ ! -r "$runs" ] || ! jq -e '.workflow_runs | type == "array"' "$runs" >/dev/null 2>&1; then
   echo "skip=false"; exit 0
 fi
-running="$(jq -r '[.workflow_runs[] | select(.status != "completed")][0].html_url // ""' "$runs")"
+now="${2:-$(date +%s)}"
+running="$(jq -r --argjson cutoff "$((now - 6 * 3600))" '
+  [.workflow_runs[] | select(.status != "completed")
+   | select((.created_at // "") == "" or ((.created_at | fromdateiso8601) > $cutoff))][0].html_url // ""' "$runs")"
 if [ -n "$running" ]; then
   echo "skip=true"; echo "why=running"; echo "url=${running}"; exit 0
 fi
