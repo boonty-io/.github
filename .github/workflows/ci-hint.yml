@@ -20,10 +20,11 @@
 #   request (label, /ci, PR   PENDING "Requested: running", linking the
 #   marked ready)             head's dispatched runs. Never overwrites a status
 #                             posted after this job started (a suite that
-#                             already finished). On "ready" it also leaves a
-#                             real verdict alone: ci-request.yml skips a head
-#                             that already ran, so there is no new run to
-#                             point at.
+#                             already finished), and leaves a real verdict
+#                             alone: ci-request.yml skips a suite that already
+#                             passed or is running on the head (and, on
+#                             "ready", a head that already ran), so there may
+#                             be no new run to point at. `/ci force` overwrites.
 #
 # A suite's own `ci-status` step replaces the line with the verdict. The hint
 # is always `pending`, so it can never satisfy a required check.
@@ -100,6 +101,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GO: ${{ steps.decide.outputs.go }}
           SOURCE: ${{ steps.decide.outputs.source }}
+          FORCE: ${{ steps.decide.outputs.force }}
           PR: ${{ steps.decide.outputs.pr }}
           STARTED: ${{ steps.decide.outputs.started }}
           CONTEXTS: ${{ inputs.contexts }}
@@ -139,7 +141,7 @@ jobs:
             row="$(latest "$c")"
             created="$(printf '%s' "$row" | cut -f2)"
             desc="$(printf '%s' "$row" | cut -f3)"
-            [ "$(scripts/ci-hint-should-post.sh "$GO" "$SOURCE" "$STARTED" "$created" "$desc")" = yes ] || continue
+            [ "$(scripts/ci-hint-should-post.sh "$GO" "$SOURCE" "$STARTED" "$created" "$desc" "$FORCE")" = yes ] || continue
             gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$sha" \
               -f state=pending -f context="$c" -f target_url="$url" -f description="$state_desc" >/dev/null
             echo "posted $c: $state_desc"

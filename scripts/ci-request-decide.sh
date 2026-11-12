@@ -8,6 +8,9 @@
 #   pr=<number>          the pull request (only when go=true)
 #   source=label|comment|ready  what made the request
 #   workflows=<csv>      override from `/ci <a.yml,b.yml>`, else empty
+#   force=true|false     `/ci force` (or `/ci force <a.yml,b.yml>`): dispatch
+#                        even a suite that already passed or is running on
+#                        this head (only when go=true)
 #   hint=true            (only with go=false) a new head that has not been
 #                        requested: post the "how to run CI" pending statuses
 #   pr=<number>          also set with hint=true
@@ -73,6 +76,7 @@ case "$event_name" in
           echo "pr=${pr}"
           echo "source=ready"
           echo "workflows="
+          echo "force=false"
           exit 0
         fi
         echo "go=false"
@@ -90,6 +94,7 @@ case "$event_name" in
     echo "pr=${pr}"
     echo "source=label"
     echo "workflows="
+    echo "force=false"
     ;;
   issue_comment)
     action="$(jq -r '.action // ""' "$event_path")"
@@ -102,19 +107,22 @@ case "$event_name" in
       *) no "author_association '${assoc}' may not request CI" ;;
     esac
     body="$(jq -r '.comment.body // ""' "$event_path")"
-    # First line only; `/ci` alone, or `/ci a.yml,b.yml` (workflow file names).
+    # First line only; `/ci` alone, or `/ci a.yml,b.yml` (workflow file names),
+    # either one optionally led by `force`.
     first="$(printf '%s\n' "$body" | head -n 1 | tr -d '\r')"
-    cmd_re="^${ci_command}([[:space:]]+([A-Za-z0-9_.,-]+))?[[:space:]]*$"
+    cmd_re="^${ci_command}([[:space:]]+(force))?([[:space:]]+([A-Za-z0-9_.,-]+))?[[:space:]]*$"
     if ! [[ "$first" =~ $cmd_re ]]; then
       no "comment does not start with '${ci_command}'"
     fi
-    workflows="${BASH_REMATCH[2]:-}"
+    force=false; [ -z "${BASH_REMATCH[2]:-}" ] || force=true
+    workflows="${BASH_REMATCH[4]:-}"
     pr="$(jq -r '.issue.number // ""' "$event_path")"
     [ -n "$pr" ] || no "issue.number missing"
     echo "go=true"
     echo "pr=${pr}"
     echo "source=comment"
     echo "workflows=${workflows}"
+    echo "force=${force}"
     ;;
   *)
     no "event '${event_name}' is not a CI request"

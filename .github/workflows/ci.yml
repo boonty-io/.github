@@ -53,6 +53,7 @@ jobs:
           persist-credentials: false
       - run: test/ci-request-decide.test.sh
       - run: test/ci-hint-should-post.test.sh
+      - run: test/ci-request-already-ran.test.sh
       - run: test/rulesets.test.sh
       - run: test/gates-verify.test.sh
       - run: test/gates-verify-facts.test.sh
@@ -64,6 +65,8 @@ jobs:
       - name: PyYAML for the install-release-tool tests
         run: python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet --user 'pyyaml==6.0.2'
       - run: test/install-release-tool.test.sh
+      - run: test/ci-request-dispatch.test.sh
+      - run: test/ci-hint-post.test.sh
       - run: test/seed-drift-check.test.sh
 
   on-demand-guard:
