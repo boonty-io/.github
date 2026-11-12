@@ -41,9 +41,12 @@ Two ways to land outside this flow remain, and neither is closed by the queue:
   bypass strict today. Use it only for the rollback below, on the owner's go.
 - A bot or script that calls `gh pr merge` itself no longer merges directly
   on a queue branch: GitHub's queue decides the merge, so such a call is
-  expected to enqueue the PR. The callers today merge directly, without
-  `--auto`: ai-config's `auto-merge.yml`, and the local `bump-sweep.sh`
-  (`gh pr merge <n> --squash --delete-branch --match-head-commit <h>`). Their
+  expected to enqueue the PR. The bot callers known today merge directly,
+  without `--auto`: ai-config's `.github/workflows/auto-merge.yml`, and
+  `bump-sweep.sh`, a local script in `~/Code/boonty/.clones` that is in no
+  repository (`gh pr merge <n> --squash --delete-branch --match-head-commit
+  <h>`). The list is not exhaustive: the ai-config queue orchestrator and the
+  gitflow fragments (`shared/55`, `shared/43`) also run `gh pr merge`. Their
   exact behaviour on a queue branch is a pilot check, and each moves to the
   enqueue command above (epic step S7).
 
