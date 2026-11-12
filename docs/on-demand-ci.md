@@ -228,11 +228,13 @@ holds on the bump PR too.
 
 ## Making it enforceable
 
-Rulesets on `staging` and `main` (payload in `rulesets/`) require the suite
-status contexts (`ci/tests`, `ci/build`, `ci/verify`), the four `gates/*` commit statuses posted by the ai-config gate
-runner, one approving review, resolved conversations, an up-to-date branch,
-and the merge queue. `apply.sh` pins every `ci/*` context to the GitHub
-Actions App (`integration_id` 15368), so only a status posted by a workflow
-counts — a PAT holding `repo:status` cannot satisfy it. Draft PRs are unmergeable already. `gh pr ready` is
+Each repository's rulesets (`rulesets/repos/<repo>.json`, `docs/rulesets.md`)
+require the suite status contexts (`ci/tests`, `ci/build`, `ci/verify`) and,
+on integration branches, `gates/verified` (`docs/merge-by-github.md`). A
+branch with a merge queue (`docs/merge-queue.md`) does not require an
+up-to-date branch: the queue runs every required suite again on its own
+commit. Every `ci/*` context is pinned to the GitHub Actions App
+(`integration_id` 15368), so only a status posted by a workflow counts. A PAT
+holding `repo:status` cannot satisfy it. Draft PRs are unmergeable already. `gh pr ready` is
 refused by the ai-config PreToolUse hook until every required context is
 green on HEAD.
