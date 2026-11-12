@@ -273,16 +273,25 @@ holds on the bump PR too.
   cache-bound) → `blacksmith-4vcpu-ubuntu-2404` (or the `-arm` variant for
   Node-only repos; ARM is 0.625 of the x64 price). Public repos stay on
   `ubuntu-latest`.
-- `runner=macmini` (opt-in per dispatch, never the default) → the `macmini`
-  runner group: ephemeral arm64 Linux runners on a self-hosted Mac mini, two jobs
-  at a time, shared with local `boonty-ai ci:remote` runs. The group admits
-  only the internal repos it lists, never a public one. Each runner has its own
-  Docker engine, so `services:` containers work on `localhost`. x86_64 Linux
-  binaries (a `linux_amd64` actionlint or gitleaks download) run there through
-  Rosetta. boonty-io/ci-runners' `host/smoke.sh` checks both on the host
-  (a service on `localhost` inside a runner, an amd64 actionlint). Jobs that
-  need x86_64 hardware stay on Blacksmith whatever `runner` says: the Android
-  emulator (KVM). Setup lives in boonty-io/ci-runners.
+- `runner=macmini` (never the default) → the `macmini` runner group:
+  ephemeral arm64 Linux runners on a self-hosted Mac mini, two jobs at a time,
+  shared with local `boonty-ai ci:remote` runs. A job lands there only when its
+  `runs-on` carries the macmini arm and the dispatch passes `runner=macmini`.
+  That is a convention, not a control: the group is not restricted to
+  workflows, so it admits any workflow of the internal repos it lists, and
+  never a public repo. A job sent there waits for the mini. Nothing falls back
+  to Blacksmith when the mini is down, or when the repo is not in the group
+  and in ci-runners' `repos` list.
+  - Each runner has its own Docker engine, so `services:` containers work on
+    `localhost`.
+  - Statically linked x86_64 Linux binaries (a `linux_amd64` actionlint or
+    gitleaks download) run through Rosetta. Dynamically linked ones, and
+    amd64-only images, need arm64 or multi-arch builds.
+  - boonty-io/ci-runners' `host/smoke.sh` checks both on the host: a service
+    on `localhost` inside a runner, and an amd64 actionlint.
+  - Do not add the macmini arm to jobs that need KVM (the Android emulator):
+    the VM has no nested virtualisation.
+  - Setup lives in boonty-io/ci-runners.
 
 ## Making it enforceable
 
