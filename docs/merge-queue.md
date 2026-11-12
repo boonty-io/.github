@@ -10,10 +10,11 @@ rebased, re-gated or re-run because the base moved.
 This replaces the strict rulesets (`strict_required_status_checks_policy:
 true`, "require branches to be up to date"). A branch ends up with one or
 the other: a queue rule with strict off, or strict with no queue. While a
-branch moves into a ruleset of its own (see "The queue rule"), and in step 1
-of that move's rollback, a strict ruleset and a queue ruleset cover it at
-once, and GitHub applies both. The rollout moves one
-repository at a time (below), so both exist side by side until it ends. The
+branch moves into a ruleset of its own (see "The queue rule"), and in that
+move's rollback from step 1 until step 2 removes the leftover ruleset, a
+strict ruleset and a queue ruleset cover it at once, and GitHub applies
+both. The rollout moves one repository at a time (below), so both exist side
+by side until it ends. The
 ai-config tooling is planned to read the live rules of the base
 (`gh api repos/<o>/<r>/rules/branches/<base>`) and take the queue path only
 where a `merge_queue` rule is present (step S2 of the merge-queue epic).
@@ -41,14 +42,20 @@ Two ways to land outside this flow remain, and neither is closed by the queue:
   bypass strict today. Use it only for the rollback below, on the owner's go.
 - A bot or script that calls `gh pr merge` itself no longer merges directly
   on a queue branch: GitHub's queue decides the merge, so such a call is
-  expected to enqueue the PR. The bot callers known today merge directly,
-  without `--auto`: ai-config's `.github/workflows/auto-merge.yml`, and
-  `bump-sweep.sh`, a local script in `~/Code/boonty/.clones` that is in no
-  repository (`gh pr merge <n> --squash --delete-branch --match-head-commit
-  <h>`). The list is not exhaustive: the ai-config queue orchestrator and the
-  gitflow fragments (`shared/55`, `shared/43`) also run `gh pr merge`. Their
-  exact behaviour on a queue branch is a pilot check, and each moves to the
-  enqueue command above (epic step S7).
+  expected to enqueue the PR. The callers known today:
+  - bots that merge directly, without `--auto`: ai-config's
+    `.github/workflows/auto-merge.yml`, and `bump-sweep.sh`, a local script
+    in `~/Code/boonty/.clones` that is in no repository (`gh pr merge <n> -R
+    boonty-io/<repo> --squash --delete-branch --match-head-commit <h>`);
+  - the queue orchestrator, which merges directly
+    (ai-config `commands/orchestrate.md`: `gh pr merge <n> --squash
+    --match-head-commit <H>`);
+  - worker owners in a repository that requires `gates/verified`, which
+    ai-config `shared/55` and `shared/43` tell to run `gh pr merge --auto
+    --squash`.
+
+  The list is not exhaustive. Each caller's behaviour on a queue branch is a
+  pilot check, and each moves to the enqueue command above (epic step S7).
 
 A PR whose base moved still needs a rebase when it **conflicts** (`DIRTY`):
 `gh pr update-branch <n> --rebase` or a local rebase, then gates and CI on the
