@@ -1,0 +1,98 @@
+[
+  {
+    "name": "main",
+    "target": "branch",
+    "enforcement": "active",
+    "conditions": {
+      "ref_name": {
+        "exclude": [],
+        "include": [
+          "refs/heads/main"
+        ]
+      }
+    },
+    "bypass_actors": [
+      {
+        "actor_id": null,
+        "actor_type": "OrganizationAdmin",
+        "bypass_mode": "always"
+      }
+    ],
+    "rules": [
+      {
+        "type": "deletion"
+      },
+      {
+        "type": "non_fast_forward"
+      },
+      {
+        "type": "required_deployments",
+        "parameters": {
+          "required_deployment_environments": [
+            "Preview – help-admin",
+            "Preview – help-merchant",
+            "Preview – help-public"
+          ]
+        }
+      },
+      {
+        "type": "required_status_checks",
+        "parameters": {
+          "strict_required_status_checks_policy": false,
+          "do_not_enforce_on_create": false,
+          "required_status_checks": [
+            {
+              "context": "Branch policy",
+              "integration_id": 15368
+            },
+            {
+              "context": "ci/build",
+              "integration_id": 15368
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "staging",
+    "target": "branch",
+    "enforcement": "active",
+    "conditions": {
+      "ref_name": {
+        "exclude": [],
+        "include": [
+          "refs/heads/staging"
+        ]
+      }
+    },
+    "bypass_actors": [
+      {
+        "actor_id": null,
+        "actor_type": "OrganizationAdmin",
+        "bypass_mode": "always"
+      },
+      {
+        "actor_id": 5,
+        "actor_type": "RepositoryRole",
+        "bypass_mode": "always"
+      }
+    ],
+    "rules": [
+      {
+        "type": "deletion"
+      },
+      {
+        "type": "non_fast_forward"
+      },
+      {
+        "type": "required_status_checks",
+        "parameters": {
+          "strict_required_status_checks_policy": false,
+          "do_not_enforce_on_create": false,
+          "required_status_checks": []
+        }
+      }
+    ]
+  }
+]
