@@ -185,7 +185,7 @@ on:
       pr:       { description: Pull request number,      required: false, type: string }
       base:     { description: Base branch of the PR,    required: false, type: string }
       head_sha: { description: Head sha when requested,  required: false, type: string }
-      runner:   { description: github | blacksmith,      required: false, type: string, default: '' }
+      runner:   { description: github | blacksmith | macmini, required: false, type: string, default: '' }
   merge_group:
 ```
 
@@ -197,7 +197,13 @@ its base is not `inputs.base` or its head is not the commit checked out —
 otherwise anyone with write access could dispatch the suite by hand with
 `base=<head sha>`, get an empty diff, and certify a code commit as docs-only. Heavy jobs use
 `runs-on: ${{ inputs.runner == 'github' && 'ubuntu-latest' || '<blacksmith label>' }}`
-so a runner-specific failure can be reproduced on the other pool.
+so a runner-specific failure can be reproduced on the other pool. A job that
+can also run on the self-hosted Mac mini (arm64 Linux, see "Runner routing") adds a
+third arm in front, so an empty or unknown `runner` still lands on Blacksmith:
+
+```yaml
+runs-on: ${{ inputs.runner == 'macmini' && fromJSON('{"group":"macmini","labels":["self-hosted","macmini-linux"]}') || (inputs.runner == 'github' && 'ubuntu-latest' || '<blacksmith label>') }}
+```
 
 Use the shared verifier rather than a local copy:
 
@@ -267,6 +273,25 @@ holds on the bump PR too.
   cache-bound) → `blacksmith-4vcpu-ubuntu-2404` (or the `-arm` variant for
   Node-only repos; ARM is 0.625 of the x64 price). Public repos stay on
   `ubuntu-latest`.
+- `runner=macmini` (never the default) → the `macmini` runner group:
+  ephemeral arm64 Linux runners on a self-hosted Mac mini, two jobs at a time,
+  shared with local `boonty-ai ci:remote` runs. A job lands there only when its
+  `runs-on` carries the macmini arm and the dispatch passes `runner=macmini`.
+  That is a convention, not a control: the group is not restricted to
+  workflows, so it admits any workflow of the internal repos it lists, and
+  never a public repo. A job sent there waits for the mini. Nothing falls back
+  to Blacksmith when the mini is down, or when the repo is not in the group
+  and in ci-runners' `repos` list.
+  - Each runner has its own Docker engine, so `services:` containers work on
+    `localhost`.
+  - Statically linked x86_64 Linux binaries (a `linux_amd64` actionlint or
+    gitleaks download) run through Rosetta. Dynamically linked ones, and
+    amd64-only images, need arm64 or multi-arch builds.
+  - boonty-io/ci-runners' `host/smoke.sh` checks both on the host: a service
+    on `localhost` inside a runner, and an amd64 actionlint.
+  - Do not add the macmini arm to jobs that need KVM (the Android emulator):
+    the VM has no nested virtualisation.
+  - Setup lives in boonty-io/ci-runners.
 
 ## Making it enforceable
 
