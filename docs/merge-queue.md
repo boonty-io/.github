@@ -40,8 +40,8 @@ Two ways to land outside this flow remain, and neither is closed by the queue:
 - A ruleset bypass actor with `bypass_mode: always` (webapp-core's
   RepositoryRole 5, admin) can still merge straight to the branch, as it can
   bypass strict today. Use it only for the rollback below, on the owner's go.
-- A bot or script that calls `gh pr merge` itself no longer merges directly
-  on a queue branch: GitHub's queue decides the merge, so such a call is
+- A bot, script or session that calls `gh pr merge` itself no longer merges
+  directly on a queue branch: GitHub's queue decides the merge, so such a call is
   expected to enqueue the PR. The callers known today:
   - bots that merge directly, without `--auto`: ai-config's
     `.github/workflows/auto-merge.yml`, and `bump-sweep.sh`, a local script
