@@ -69,11 +69,12 @@ another sha. The shared `gates-verify.yml` therefore also runs on
   current head);
 - the status goes on the merge-group commit, and only `success` passes
   there: "no receipt yet" is `failure`, never `pending`.
-- every queue entry gets a status, whatever failed before the post: a ref
-  that names no PR, a PR that is closed or cannot be read, a failed `target`
-  job. Each gets `failure` with the reason (`scripts/gates-verify-post.sh`,
-  tested by `test/gates-verify-post.test.sh`). A queue entry with no status
-  at all would wait for `check_response_timeout_minutes`.
+- a queue entry that cannot be verified still gets a status: a ref that
+  names no PR, a PR that is closed or cannot be read, and a failed `target`
+  job each get `failure` with the reason (`scripts/gates-verify-post.sh`,
+  tested by `test/gates-verify-post.test.sh`). A failed checkout of the
+  decision scripts, or a timed-out job, leaves no status: the entry then
+  waits for `check_response_timeout_minutes` and fails.
 
 The decision reads the PR's head when the run starts, not the head the queue
 commit was built from. A push to a queued PR removes it from the queue, so a
@@ -116,7 +117,7 @@ In `rulesets/repos/<repo>.json`, on the branch's ruleset: set
   ai-config and `.github` `main`). A `main` fed by `staging`→`main` delivery
   PRs uses `MERGE`, as those PRs merge today.
 - `max_entries_to_build`: how many entries run CI at once. Each is a full run
-  of the repository's suites. `pos-app-android` uses `2` (`ci/android` is a
+  of the repository's suites. `pos-app-android` should use `2` (`ci/android` is a
   16-21 minute emulator run); the others `5`.
 - `check_response_timeout_minutes`: longer than the slowest required suite.
 - `grouping_strategy`: always `ALLGREEN` on a branch that requires
@@ -132,8 +133,10 @@ In `rulesets/repos/<repo>.json`, on the branch's ruleset: set
 
 A queue entry is a full CI run on a new commit. Before a repository moves:
 
-- device runs: `pos-android-e2e_autotests`' device workflow skips
-  `merge_group` (device time is scarce);
+- device runs: `pos-android-e2e_autotests`' device workflow runs on
+  `merge_group` today (`android-device-tests.yml` accepts a `merge_group`
+  run). Making it skip `merge_group` is a prerequisite of that repository's
+  move, since device time is scarce;
 - shared state: a suite that writes a shared database (api-core
   `update-database`) needs a concurrency group;
 - Vercel: a required `Vercel` context, and an `ci/e2e` that waits for a
@@ -154,6 +157,6 @@ If that queue is what broke, the ruleset's `OrganizationAdmin` bypass actor
 merges the revert, on the owner's go. That is why `.github` moves only after
 two other repositories have held.
 
-A repository with no file in `rulesets/repos/` yet (crm, docs) is first
+A repository with no file in `rulesets/repos/` yet (crm) is first
 exported (`docs/rulesets.md`) in a PR of its own that must plan `unchanged`.
 Its queue change then follows.

@@ -22,9 +22,12 @@
 # same decision then runs against that PR's receipt and current head, and the
 # status goes on the merge-group sha. There, anything but `success` is a
 # failure, never pending: a pending or missing context would hold the queue
-# until its timeout. So every merge_group run posts, whatever failed before
-# the post: a ref that names no PR, a closed PR, a failed `target` job
-# (scripts/gates-verify-post.sh, tested by test/gates-verify-post.test.sh).
+# until its timeout. So a merge_group run posts `failure` with the reason when
+# the queue ref names no PR, the PR is closed or cannot be read, or the
+# `target` job failed (scripts/gates-verify-post.sh, tested by
+# test/gates-verify-post.test.sh). Not covered: a failed checkout of the
+# decision scripts (the post script comes from it) or a timed-out job, which
+# leave no status, so the entry waits for the queue's timeout.
 #
 # pull_request_target and issue_comment run the caller from the default
 # branch, so a PR cannot change this workflow's decision on its own head.
@@ -87,6 +90,8 @@ jobs:
           if out="$(shared/scripts/merge-group-target.sh "$HEAD_REF" "$BASE_REF")"; then
             printf '%s\n' "$out" | grep '^pr=' >> "$GITHUB_OUTPUT"
           else
+            # No exit 1: an empty `pr` is enough, and verify posts the
+            # failure with its reason either way.
             echo "::error title=gates-verify::'$HEAD_REF' names no queued pull request on '$BASE_REF'"
           fi
 
