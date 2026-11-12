@@ -198,7 +198,7 @@ otherwise anyone with write access could dispatch the suite by hand with
 `base=<head sha>`, get an empty diff, and certify a code commit as docs-only. Heavy jobs use
 `runs-on: ${{ inputs.runner == 'github' && 'ubuntu-latest' || '<blacksmith label>' }}`
 so a runner-specific failure can be reproduced on the other pool. A job that
-can also run on the office Mac mini (arm64 Linux, see "Runner routing") adds a
+can also run on the self-hosted Mac mini (arm64 Linux, see "Runner routing") adds a
 third arm in front, so an empty or unknown `runner` still lands on Blacksmith:
 
 ```yaml
@@ -274,13 +274,15 @@ holds on the bump PR too.
   Node-only repos; ARM is 0.625 of the x64 price). Public repos stay on
   `ubuntu-latest`.
 - `runner=macmini` (opt-in per dispatch, never the default) → the `macmini`
-  runner group: ephemeral arm64 Linux runners on the office Mac mini, two jobs
+  runner group: ephemeral arm64 Linux runners on a self-hosted Mac mini, two jobs
   at a time, shared with local `boonty-ai ci:remote` runs. The group admits
   only the internal repos it lists, never a public one. Each runner has its own
   Docker engine, so `services:` containers work on `localhost`. x86_64 Linux
   binaries (a `linux_amd64` actionlint or gitleaks download) run there through
-  Rosetta. Jobs that need x86_64 hardware stay on Blacksmith whatever `runner`
-  says: the Android emulator (KVM). Setup lives in boonty-io/ci-runners.
+  Rosetta. boonty-io/ci-runners' `host/smoke.sh` checks both on the host
+  (a service on `localhost` inside a runner, an amd64 actionlint). Jobs that
+  need x86_64 hardware stay on Blacksmith whatever `runner` says: the Android
+  emulator (KVM). Setup lives in boonty-io/ci-runners.
 
 ## Making it enforceable
 
