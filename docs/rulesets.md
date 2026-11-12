@@ -17,6 +17,10 @@ a personal `gh api -X PUT` any more.
    ruleset no longer matches its file (someone edited it by hand). Fix the
    file, or re-apply with `workflow_dispatch` in `apply` mode.
 
+A branch's merge queue is a `merge_queue` rule in the same file, with
+`strict_required_status_checks_policy: false` beside it
+(`docs/merge-queue.md`). It is applied and compared like any other rule.
+
 Organization rulesets and classic branch protection (still used by
 `pos-app-android`) are outside this mechanism.
 

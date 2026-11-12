@@ -112,5 +112,20 @@ if [ "$rc" = 2 ] && grep -qx 'demo/Staging: update' "$T/out"; then ok "skip-bypa
 rc=$(RULESETS_SKIP_BYPASS=1 run apply boonty-io "$(desired desired.json)")
 if [ "$rc" = 64 ] && [ ! -s "$LOG" ]; then ok "apply refuses skip-bypass"; else ko "apply skip-bypass (rc=$rc)"; fi
 
+# 14. a merge_queue rule (strict off) is applied as written: one PUT, the
+#     queue rule and the non-strict checks in the body
+rc=$(run apply boonty-io "$(desired desired-merge-queue.json)")
+if [ "$rc" = 0 ] && [ -f "$T/put-12.json" ] && [ "$(jq -S . "$T/put-12.json")" = "$(jq -S '.[1]' "$F/desired-merge-queue.json")" ] \
+   && [ "$(jq -r '.rules[] | select(.type == "merge_queue") | .parameters.merge_method' "$T/put-12.json")" = SQUASH ] \
+   && [ "$(jq -r '.rules[] | select(.type == "required_status_checks") | .parameters.strict_required_status_checks_policy' "$T/put-12.json")" = false ]; then
+  ok "merge_queue rule applied as written"; else ko "merge_queue apply (rc=$rc)"; fi
+
+# 15. a live ruleset already carrying that queue, its rules in another order,
+#     is unchanged: the queue never reads as drift once applied
+Q="$T/fix-queue"; mkdir -p "$Q"; cp "$F"/live-*.json "$Q"/
+jq -c '.[1] | {id: 12, source_type: "Repository"} + . | .rules |= reverse' "$F/desired-merge-queue.json" > "$Q/live-12.json"
+rc=$(FIX="$Q" run plan boonty-io "$(desired desired-merge-queue.json)")
+if [ "$rc" = 0 ] && grep -qx 'demo/Staging: unchanged' "$T/out"; then ok "applied queue reads unchanged"; else ko "queue round-trip (rc=$rc)"; fi
+
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]

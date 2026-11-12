@@ -3,6 +3,9 @@ name: ci
 
 on:
   pull_request:
+  # actionlint and the fixtures are required contexts on main: a queue entry
+  # must report them on its own commit.
+  merge_group:
   push:
     branches: [main]
 
@@ -53,6 +56,8 @@ jobs:
       - run: test/rulesets.test.sh
       - run: test/gates-verify.test.sh
       - run: test/gates-verify-facts.test.sh
+      - run: test/merge-group-target.test.sh
+      - run: test/gates-verify-post.test.sh
       - run: test/lean-diff-ok.test.sh
       - run: test/bump-reproduces.test.sh
       - run: test/gate-content-hash.test.sh

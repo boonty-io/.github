@@ -10,8 +10,11 @@ has to stay alive for it, and nobody has to reach the queue orchestrator.
    starts with `boonty-gates/v1`. The comment carries the head sha, the base,
    the content hash of the diff (`content_sha256`, from
    `scripts/gate-content-hash.sh`) and the four verdicts.
-2. The session marks the PR ready and enables auto-merge
-   (`gh pr merge --auto --squash`, or the repository's usual method).
+2. The session marks the PR ready. Once every required context is green on
+   the head, it enqueues the PR: `gh pr merge <n> --repo <o>/<r>
+   --match-head-commit <head>` on a branch with a merge queue
+   (`docs/merge-queue.md`). On a branch still on a strict ruleset, it merges
+   the same way once the head is up to date.
 3. `gates-verify` runs on the comment and on every new head. It posts
    `gates/verified`:
    - `success` when the last-written receipt from someone with write, maintain
@@ -21,11 +24,17 @@ has to stay alive for it, and nobody has to reach the queue orchestrator.
      the diff changed since the gates ran (whitespace included);
    - `pending` when no receipt exists yet.
 4. Ready PRs run their `ci/*` suites on every new head (`docs/on-demand-ci.md`).
-5. GitHub merges once every required check is green, plus the approval where
-   the ruleset requires one.
+5. On a queue branch, GitHub runs the required checks again on the queue
+   entry's own commit. `gates-verify` decides there too and posts
+   `gates/verified` on that commit (`docs/merge-queue.md`). The entry lands
+   once every check is green, plus the approval where the ruleset requires
+   one.
 
-**When the base moves.** `gh pr update-branch --rebase` gives the PR a new
-head. Its CI re-runs on its own. `gates/verified` stays green when the base
+**When the base moves.** On a queue branch, the base moving does nothing to
+the PR: the queue tests the combination. A rebase is needed only when the PR
+conflicts. On a strict branch, and after a conflict rebase,
+`gh pr update-branch --rebase` gives the PR a new head and its CI re-runs on
+its own. `gates/verified` stays green when the base
 moved only on files the diff does not touch: every diffed file then has the
 same two blob ids, so the hash is identical. If the base touched a file the
 diff touches, the hash changes, the status turns red and the gates must run
@@ -43,8 +52,11 @@ ignore whitespace.
 
 **Trust.** The receipt is as trustworthy as today's local receipt files: a
 person with write access could forge either. What changes is where it is
-checked: from the default branch's workflow, against the diff and base the PR
-has when the check runs. The ruleset pins the context to GitHub Actions
+checked: on a PR event, from the default branch's workflow, against the diff
+and base the PR has when the check runs. On a queue entry (`merge_group`) the
+caller runs as it stands in the queue commit, which carries the PR's own
+changes, so a PR that edits its caller changes what runs for its entry. That
+is no wider than the gap below. The ruleset pins the context to GitHub Actions
 (integration 15368). That stops a personal token or another App from posting
 it, but not another workflow: anyone who can push a branch can add a workflow
 that posts `gates/verified` with its own `GITHUB_TOKEN`. That is the same
@@ -139,31 +151,38 @@ hotfix PRs into such a `main` are not held by this check.
        types: [opened, reopened, synchronize, ready_for_review, edited]
      issue_comment:
        types: [created, edited]
+     merge_group:
    permissions: {}
    concurrency:
      # A comment that is not a receipt gets a group of its own, so it can never
-     # cancel the run of a new head and then skip its own job.
-     group: gates-verify-${{ github.event.pull_request.number || github.event.issue.number }}-${{ (github.event_name == 'issue_comment' && !startsWith(github.event.comment.body, 'boonty-gates/v1')) && github.run_id || 'verify' }}
+     # cancel the run of a new head and then skip its own job. A queue entry has
+     # no PR number: it is grouped by its own commit, so entries never cancel
+     # each other.
+     group: gates-verify-${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.event.pull_request.number || github.event.issue.number }}-${{ (github.event_name == 'issue_comment' && !startsWith(github.event.comment.body, 'boonty-gates/v1')) && github.run_id || 'verify' }}
      cancel-in-progress: true
    jobs:
      verify:
-       if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && startsWith(github.event.comment.body, 'boonty-gates/v1'))
+       if: github.event_name == 'pull_request_target' || github.event_name == 'merge_group' || (github.event.issue.pull_request && startsWith(github.event.comment.body, 'boonty-gates/v1'))
        uses: boonty-io/.github/.github/workflows/gates-verify.yml@<sha> # main
        permissions: { contents: read, pull-requests: read, statuses: write, packages: read }
    ```
 
    `issue_comment` and `pull_request_target` run from the default branch, so
-   the caller takes effect once it is on `main`.
+   the caller takes effect once it is on `main`. `merge_group` runs the file
+   as it stands in the queue entry's commit: the base's file, plus any change
+   the queued PR makes to it ("Trust" above).
 2. In `rulesets/repos/<repo>.json`, add
    `{"context": "gates/verified", "integration_id": 15368}` to the required
    checks of the integration branch only ("Where it is required" above). Do
    it after step 1 has reached `main`, or every PR waits on a status nobody
    posts.
-3. Turn on Settings → General → **Allow auto-merge**.
+3. Add the merge queue to that branch's ruleset (`docs/merge-queue.md`).
+   **Allow auto-merge** stays off: the enqueue is the merge path.
 
 ## What the queue orchestrator still does
 
-It is no longer on the merge path. It keeps the cross-PR view: overlaps, merge
-order between dependent PRs, stale drafts. A dependent PR stays draft until
-the PR it depends on has merged, so auto-merge cannot land the two in the
-wrong order.
+It verifies a PR (`queue-orchestrator verify-merge`) and enqueues it. It no
+longer rebases PRs because the base moved. It keeps the cross-PR view:
+overlaps, merge order between dependent PRs, stale drafts. A dependent PR
+stays draft until the PR it depends on has merged, so the queue cannot land
+the two in the wrong order.
