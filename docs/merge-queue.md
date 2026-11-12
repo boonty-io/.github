@@ -96,7 +96,11 @@ from it alone would let queue entries cancel each other. See the caller in
 ## The queue rule
 
 In `rulesets/repos/<repo>.json`, on the branch's ruleset: set
-`strict_required_status_checks_policy` to `false` and add
+`strict_required_status_checks_policy` to `false` and add the rule below. If
+that ruleset also covers a branch that stays strict, move the queue branch
+into a ruleset of its own instead, and name it so it sorts before the old one:
+`rulesets.sh` applies by name, so the new ruleset is created before the old
+one is narrowed. Its rollback differs (see "Rollout and rollback").
 
 ```json
 {
@@ -151,9 +155,30 @@ its producers are fixed. The ruleset PR merges only on the owner's go.
 
 Rollback for one repository: revert its ruleset file to strict and no queue,
 and merge it; the `rulesets` workflow applies it. The `merge_group` triggers
-can stay, since they do nothing without a queue. A revert PR in this
-repository goes through this repository's own queue once `.github` has one.
-If that queue is what broke, the ruleset's `OrganizationAdmin` bypass actor
+can stay, since they do nothing without a queue.
+
+That revert is the whole rollback only when the queue rule went into a
+ruleset that already existed. When the change moved the branch into a new
+ruleset of its own (webapp-core `staging` went from "Protected branches" to
+"Merge queue staging", because "Protected branches" also covers `main`), the
+revert takes the new ruleset out of the file but not out of GitHub:
+`rulesets.sh` never deletes, so it plans it `unmanaged` and its `merge_queue`
+rule stays active. Roll such a change back in two steps:
+
+1. Merge the revert. The old ruleset covers the branch again, strict, while
+   the new one still holds the queue: the branch keeps its required checks
+   throughout.
+2. An admin disables or deletes the leftover ruleset (Settings → Rules → Rulesets,
+   or `gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>`). Only then
+   is the queue gone.
+
+Do not instead ship one forward PR that sets the new ruleset's `enforcement`
+to `disabled` and widens the old one: `rulesets.sh` applies by name, so
+"Merge queue staging" is disabled before "Protected branches" is widened, and
+the branch has no rules in between.
+
+A revert PR in this repository goes through this repository's own queue
+once `.github` has one. If that queue is what broke, the ruleset's `OrganizationAdmin` bypass actor
 merges the revert, on the owner's go. That is why `.github` moves only after
 two other repositories have held.
 
