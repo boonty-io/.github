@@ -168,9 +168,9 @@ rule stays active. Roll such a change back in two steps:
 1. Merge the revert. The old ruleset covers the branch again, strict, while
    the new one still holds the queue: the branch keeps its required checks
    throughout.
-2. An admin disables or deletes the leftover ruleset (Settings → Rules → Rulesets,
-   or `gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>`). Only then
-   is the queue gone.
+2. An admin disables or deletes the leftover ruleset (Settings → Rules →
+   Rulesets, or `gh api -X DELETE repos/<owner>/<repo>/rulesets/<id>`).
+   Only then is the queue gone.
 
 Do not instead ship one forward PR that sets the new ruleset's `enforcement`
 to `disabled` and widens the old one: `rulesets.sh` applies by name, so
@@ -178,9 +178,9 @@ to `disabled` and widens the old one: `rulesets.sh` applies by name, so
 the branch has no rules in between.
 
 A revert PR in this repository goes through this repository's own queue
-once `.github` has one. If that queue is what broke, the ruleset's `OrganizationAdmin` bypass actor
-merges the revert, on the owner's go. That is why `.github` moves only after
-two other repositories have held.
+once `.github` has one. If that queue is what broke, the ruleset's
+`OrganizationAdmin` bypass actor merges the revert, on the owner's go. That
+is why `.github` moves only after two other repositories have held.
 
 A repository with no file in `rulesets/repos/` yet (crm) is first
 exported (`docs/rulesets.md`) in a PR of its own that must plan `unchanged`.
