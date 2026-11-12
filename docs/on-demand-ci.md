@@ -277,10 +277,10 @@ holds on the bump PR too.
   runner group: ephemeral arm64 Linux runners on the office Mac mini, two jobs
   at a time, shared with local `boonty-ai ci:remote` runs. The group admits
   only the internal repos it lists, never a public one. Each runner has its own
-  Docker engine, so `services:` containers work on `localhost`. Jobs that need
-  x86_64 stay on Blacksmith whatever `runner` says: the Android emulator
-  (KVM) and steps that download `linux_amd64` binaries. Setup lives in
-  boonty-io/ci-runners.
+  Docker engine, so `services:` containers work on `localhost`. x86_64 Linux
+  binaries (a `linux_amd64` actionlint or gitleaks download) run there through
+  Rosetta. Jobs that need x86_64 hardware stay on Blacksmith whatever `runner`
+  says: the Android emulator (KVM). Setup lives in boonty-io/ci-runners.
 
 ## Making it enforceable
 
