@@ -89,7 +89,9 @@ jobs:
         with:
           repository: boonty-io/.github
           ref: ${{ job.workflow_sha || inputs.shared_ref }}
-          sparse-checkout: scripts/ci-request-decide.sh
+          sparse-checkout: |
+            scripts/ci-request-decide.sh
+            scripts/ci-request-already-ran.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -173,6 +175,8 @@ jobs:
           BASE: ${{ steps.pr.outputs.base }}
           DEFAULT_WORKFLOWS: ${{ inputs.workflows }}
           OVERRIDE_WORKFLOWS: ${{ steps.decide.outputs.workflows }}
+          FORCE: ${{ steps.decide.outputs.force }}
+          COMMAND: ${{ inputs.command }}
         run: |
           set -euo pipefail
           list="${OVERRIDE_WORKFLOWS:-$DEFAULT_WORKFLOWS}"
@@ -189,10 +193,37 @@ jobs:
             done
           fi
           IFS=',' read -r -a workflows <<< "$list"
+          # A suite that already passed, or is still running, on this exact head is
+          # not dispatched again: the same commit buys the same verdict
+          # (scripts/ci-request-already-ran.sh). A new push or a rebase is a new head
+          # and always runs. `/ci force` dispatches anyway.
+          dispatched=(); skipped=()
           for wf in "${workflows[@]}"; do
             [ -n "$wf" ] || continue
+            if [ "$FORCE" != "true" ]; then
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf/runs?head_sha=$HEAD_SHA&event=workflow_dispatch&per_page=100" \
+                > runs.json 2>/dev/null || echo '{}' > runs.json
+              verdict="$(scripts/ci-request-already-ran.sh runs.json)"
+              if printf '%s\n' "$verdict" | grep -qx 'skip=true'; then
+                why="$(printf '%s\n' "$verdict" | sed -n 's/^why=//p')"
+                url="$(printf '%s\n' "$verdict" | sed -n 's/^url=//p')"
+                echo "not dispatching $wf on $HEAD_SHA: ${why} ($url)"
+                skipped+=("- \`$wf\`: ${why} on this commit, $url")
+                continue
+              fi
+            fi
             echo "dispatching $wf on $HEAD_REF ($HEAD_SHA) for PR #$PR (base $BASE)"
             gh workflow run "$wf" --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF" \
               -f "pr=$PR" -f "base=$BASE" -f "head_sha=$HEAD_SHA"
+            dispatched+=("$wf")
           done
-          echo "::notice title=ci-request::dispatched ${list} on PR #$PR @ ${HEAD_SHA}"
+          if [ "${#skipped[@]}" -gt 0 ]; then
+            {
+              echo "CI was not run again for \`${HEAD_SHA:0:7}\` because these suites already passed or are still running on this commit:"
+              printf '%s\n' "${skipped[@]}"
+              echo
+              echo "Push a change to run them on new code, or comment \`$COMMAND force\` to run them again on this commit."
+            } > skipped.md
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file skipped.md
+          fi
+          echo "::notice title=ci-request::dispatched ${dispatched[*]:-nothing}, skipped ${#skipped[@]} on PR #$PR @ ${HEAD_SHA}"

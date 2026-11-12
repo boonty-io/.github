@@ -10,7 +10,7 @@ repository implements the request half.
 | Event | What runs | Where |
 | --- | --- | --- |
 | push to a branch without a PR | nothing | — |
-| PR labelled `ci:run`, or `/ci` comment by an org member | every suite workflow the repo lists | dispatched on the PR head |
+| PR labelled `ci:run`, or `/ci` comment by an org member | every suite the repo lists, except one that already passed or is running on this head (`/ci force` runs it anyway) | dispatched on the PR head |
 | PR marked ready for review, or opened, reopened or pushed to while non-draft (five-type trigger set only) | every suite, unless this head was already dispatched | dispatched on the PR head |
 | draft PR opened, reopened, or pushed to | no suite — with `ci-hint.yml`, a pending "Not run yet" line per required context | — |
 | `merge_group` | every suite once more before landing | merge queue |
@@ -26,6 +26,25 @@ when the head sha already has a `workflow_dispatch` run, finished or not. A
 failed head is not re-run by flipping; request it again. Dependabot and fork
 PRs are skipped (read-only token); request them by label or `/ci`.
 
+A label or `/ci` does not pay twice for the same commit either. Before it
+dispatches a suite, `ci-request.yml` reads that suite's `workflow_dispatch`
+runs on the PR head (`scripts/ci-request-already-ran.sh`, tested by
+`test/ci-request-already-ran.test.sh` and `test/ci-request-dispatch.test.sh`):
+
+- a run still queued or in progress, or a newest run that succeeded: the suite
+  is not dispatched, and one PR comment links those runs;
+- no run on this head (a new push or a rebase: new code), or a newest run that
+  failed, was cancelled or never started: the suite is dispatched as before;
+- the runs cannot be read: the suite is dispatched (a wasted run costs less than
+  a suite that never runs).
+
+So after one suite fails, `/ci` re-runs that suite and leaves the ones that
+passed. `/ci force` (or `/ci force tests.yml`) from an org member dispatches
+regardless, for a suite that passed but should run again, such as one that
+depends on outside state. A new commit with the same tree as one that passed
+(an amended message, an empty commit) is still a new head and runs: its
+statuses live on the old commit.
+
 ### Opt-in: make every required line say something (`ci-hint.yml`)
 
 Without it, an unrequested context and a running one both read "Expected —
@@ -40,7 +59,9 @@ lists:
   running", linking the head branch's dispatched runs, so the line is
   clickable while the suite runs. It never overwrites a status posted after
   the request, and on "ready" never a real verdict (nothing is dispatched for
-  a head that already ran). A partial `/ci tests.yml` posts nothing.
+  a head that already ran). On a label or `/ci` it never overwrites a success
+  either, since that suite is not dispatched again; `/ci force` does. A partial
+  `/ci tests.yml` posts nothing.
 
 The suite's own `ci-status` step replaces the line with the verdict; a pending
 line never satisfies a required check. The per-context rule is
@@ -84,7 +105,8 @@ split on `github.event.action` into `'hint'` and `'request'`, and
 `cancel-in-progress` must not be a bare `true`. A consumer still on
 `[labeled]` keeps working unchanged.
 
-`/ci` alone dispatches every listed suite; `/ci tests.yml` dispatches one. A
+`/ci` alone dispatches every listed suite that has not passed on the head; `/ci tests.yml` dispatches one;
+`/ci force` and `/ci force tests.yml` skip that check. A
 name that is not in the repo's list is refused. Only `OWNER`, `MEMBER` and
 `COLLABORATOR` comment authors are honoured. The label is removed as soon as
 the request is taken, so applying it again requests another run.

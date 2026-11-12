@@ -7,16 +7,21 @@
 #   $3 started  ISO-8601 UTC time the hint job started
 #   $4 created  created_at of the latest status for the context, empty if none
 #   $5 desc     description of that status
+#   $6 state    state of that status (success, failure, pending, error)
+#   $7 force    true for `/ci force`
 #
 # Rules: nothing on the head → post. On a new head, never overwrite anything.
 # On a request, never overwrite a status posted after the job started (a suite
 # that already answered), and on "ready" never overwrite a real verdict —
-# ci-request.yml dispatches nothing for a head that already ran.
+# ci-request.yml dispatches nothing for a head that already ran. On a label or
+# `/ci`, never overwrite a success either: ci-request.yml does not dispatch a
+# suite that passed on this head, unless `/ci force`.
 set -euo pipefail
-go="${1:?go}"; source="${2:-}"; started="${3:?started}"; created="${4:-}"; desc="${5:-}"
+go="${1:?go}"; source="${2:-}"; started="${3:?started}"; created="${4:-}"; desc="${5:-}"; state="${6:-}"; force="${7:-false}"
 [ -n "$created" ] || { echo yes; exit 0; }
 [ "$go" = "true" ] || { echo no; exit 0; }
 [[ "$created" < "$started" ]] || { echo no; exit 0; }
 case "$desc" in "Not run yet:"*|"Requested:"*) is_hint=1 ;; *) is_hint=0 ;; esac
 if [ "$source" = "ready" ] && [ "$is_hint" -eq 0 ]; then echo no; exit 0; fi
+if [ "$state" = "success" ] && [ "$force" != "true" ]; then echo no; exit 0; fi
 echo yes

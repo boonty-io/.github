@@ -23,5 +23,12 @@ expect yes true ready "$S" "$OLD" 'Not run yet: mark the PR ready, add the ci:ru
 expect yes true ready "$S" '' ''
 # 8. /ci over an earlier "Requested" line → running again
 expect yes true comment "$S" "$OLD" 'Requested: running (see the runs on this branch)'
+# 9. label or /ci over a success: ci-request skips a suite that passed on this head, so leave the verdict
+expect no true label "$S" "$OLD" 'passed (workflow_dispatch)' success false
+expect no true comment "$S" "$OLD" 'passed (workflow_dispatch)' success false
+# 10. `/ci force` re-runs it: running
+expect yes true comment "$S" "$OLD" 'passed (workflow_dispatch)' success true
+# 11. over a failure the suite is dispatched again: running
+expect yes true label "$S" "$OLD" 'failed (workflow_dispatch)' failure false
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]

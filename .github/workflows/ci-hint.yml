@@ -100,6 +100,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GO: ${{ steps.decide.outputs.go }}
           SOURCE: ${{ steps.decide.outputs.source }}
+          FORCE: ${{ steps.decide.outputs.force }}
           PR: ${{ steps.decide.outputs.pr }}
           STARTED: ${{ steps.decide.outputs.started }}
           CONTEXTS: ${{ inputs.contexts }}
@@ -114,9 +115,9 @@ jobs:
           fi
           sha="$(jq -r .headRefOid pr.json)"
           ref="$(jq -r .headRefName pr.json)"
-          # Latest status per context on the head: `context<TAB>created_at<TAB>description`.
+          # Latest status per context on the head: `context<TAB>created_at<TAB>description<TAB>state`.
           gh api "repos/$GITHUB_REPOSITORY/commits/$sha/statuses" --paginate \
-            --jq '.[] | [.context, .created_at, (.description // "")] | @tsv' > statuses.tsv
+            --jq '.[] | [.context, .created_at, (.description // ""), .state] | @tsv' > statuses.tsv
           latest() { awk -F'\t' -v c="$1" '$1 == c { print; exit }' statuses.tsv; }
 
           if [ "$GO" = "true" ]; then
@@ -139,7 +140,8 @@ jobs:
             row="$(latest "$c")"
             created="$(printf '%s' "$row" | cut -f2)"
             desc="$(printf '%s' "$row" | cut -f3)"
-            [ "$(scripts/ci-hint-should-post.sh "$GO" "$SOURCE" "$STARTED" "$created" "$desc")" = yes ] || continue
+            state="$(printf '%s' "$row" | cut -f4)"
+            [ "$(scripts/ci-hint-should-post.sh "$GO" "$SOURCE" "$STARTED" "$created" "$desc" "$state" "$FORCE")" = yes ] || continue
             gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$sha" \
               -f state=pending -f context="$c" -f target_url="$url" -f description="$state_desc" >/dev/null
             echo "posted $c: $state_desc"

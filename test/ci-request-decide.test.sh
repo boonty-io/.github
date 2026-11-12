@@ -37,6 +37,14 @@ expect pull_request labeled-other.json 'go=true,pr=42' 'dependencies'
 expect issue_comment comment-ci-member.json 'go=true,pr=7,source=comment,workflows='
 # 6. `/ci tests.yml` → override carried through
 expect issue_comment comment-ci-with-workflows.json 'go=true,pr=7,workflows=tests.yml'
+# 6b. `/ci force` re-runs even what already passed on this head
+expect issue_comment comment-ci-force.json 'go=true,pr=7,source=comment,workflows=,force=true'
+# 6c. `/ci force tests.yml` forces a subset
+expect issue_comment comment-ci-force-with-workflows.json 'go=true,pr=7,workflows=tests.yml,force=true'
+# 6d. a plain `/ci`, the label and a ready PR never force
+expect issue_comment comment-ci-member.json 'force=false'
+expect pull_request labeled-ci-run.json 'force=false'
+expect pull_request ready-for-review.json 'force=false'
 # 7. `/ci` from a first-time contributor → nothing
 expect issue_comment comment-ci-outsider.json 'go=false'
 # 8. `/ci` on an issue (not a PR) → nothing
