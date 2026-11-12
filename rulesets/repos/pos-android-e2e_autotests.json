@@ -53,6 +53,10 @@
             {
               "context": "ci/verify",
               "integration_id": 15368
+            },
+            {
+              "context": "gates/verified",
+              "integration_id": 15368
             }
           ]
         }
