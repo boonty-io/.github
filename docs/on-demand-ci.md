@@ -228,13 +228,16 @@ holds on the bump PR too.
 
 ## Making it enforceable
 
-Each repository's rulesets (`rulesets/repos/<repo>.json`, `docs/rulesets.md`)
-require the suite status contexts (`ci/tests`, `ci/build`, `ci/verify`) and,
-on integration branches, `gates/verified` (`docs/merge-by-github.md`). A
-branch with a merge queue (`docs/merge-queue.md`) does not require an
-up-to-date branch: the queue runs every required suite again on its own
-commit. Every `ci/*` context is pinned to the GitHub Actions App
-(`integration_id` 15368), so only a status posted by a workflow counts. A PAT
-holding `repo:status` cannot satisfy it. Draft PRs are unmergeable already. `gh pr ready` is
+Each repository's ruleset file (`rulesets/repos/<repo>.json`,
+`docs/rulesets.md`) lists the contexts its branches require: the suite
+contexts (`ci/tests`, `ci/build`, `ci/verify`) where the repository runs them,
+and `gates/verified` where it has moved to merge by GitHub
+(`docs/merge-by-github.md`). A branch with a merge queue
+(`docs/merge-queue.md`) does not require an up-to-date branch: the queue runs
+every required suite again on its own commit. A context the file pins to the
+GitHub Actions App (`"integration_id": 15368`) counts only when a workflow
+posts it, so a PAT holding `repo:status` cannot satisfy it. A context listed
+without an `integration_id` accepts a status from any source; the file is
+what to read for which is which. Draft PRs are unmergeable already. `gh pr ready` is
 refused by the ai-config PreToolUse hook until every required context is
 green on HEAD.

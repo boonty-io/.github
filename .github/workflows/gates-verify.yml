@@ -20,13 +20,18 @@
 # + this PR) and wants every required context on THAT sha. The `target` job
 # names the queued PR from the queue ref (scripts/merge-group-target.sh); the
 # same decision then runs against that PR's receipt and current head, and the
-# status goes on the merge-group sha. There, "no receipt" is a failure, not
-# pending: a pending context would hold the queue until its timeout. An entry
-# whose ref names no PR gets a failure too.
+# status goes on the merge-group sha. There, anything but `success` is a
+# failure, never pending: a pending or missing context would hold the queue
+# until its timeout. So every merge_group run posts, whatever failed before
+# the post: a ref that names no PR, a closed PR, a failed `target` job
+# (scripts/gates-verify-post.sh, tested by test/gates-verify-post.test.sh).
 #
-# Every trigger run the caller from the default branch, never from the PR, so
-# a PR cannot change this workflow's decision (it could still add a workflow of
-# its own that posts the context: docs/merge-by-github.md, "Trust"). The PR head is checked out only
+# pull_request_target and issue_comment run the caller from the default
+# branch, so a PR cannot change this workflow's decision on its own head.
+# merge_group runs the caller as it stands in the queue commit, which carries
+# the PR's own changes: a PR that edits its caller changes what runs for its
+# queue entry. Either way a PR could add a workflow of its own that posts the
+# context (docs/merge-by-github.md, "Trust"). The PR head is checked out only
 # to take its diff and, for an ai-config bump PR, to read its three package files as data;
 # nothing from it is executed. An ai-config bump PR is reproduced in the `bump`
 # job, whose token cannot post a status; `verify` alone holds statuses: write. The decision is
@@ -47,8 +52,9 @@ on:
 permissions: {}
 
 jobs:
-  # Which PR this run is about, and which sha its status goes on: the PR head
-  # for a PR event, the merge-group commit for a queue entry.
+  # Which PR a queue entry is for, named from the queue ref. A PR event
+  # names its PR itself, and a queue entry's status sha comes from the event
+  # (verify), so a failure here cannot leave anything without a status.
   target:
     name: target
     runs-on: ubuntu-latest
@@ -57,8 +63,6 @@ jobs:
       contents: read        # the parser script
     outputs:
       pr: ${{ steps.t.outputs.pr }}
-      queue: ${{ steps.t.outputs.queue }}
-      queue_sha: ${{ steps.t.outputs.queue_sha }}
     steps:
       - name: Check out the parser
         if: github.event_name == 'merge_group'
@@ -72,28 +76,18 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      - name: Name the pull request
+      - name: Name the queued pull request
         id: t
+        if: github.event_name == 'merge_group'
         env:
-          EVENT: ${{ github.event_name }}
-          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
-          IS_PR: ${{ github.event_name == 'pull_request_target' || github.event.issue.pull_request != null }}
           HEAD_REF: ${{ github.event.merge_group.head_ref }}
           BASE_REF: ${{ github.event.merge_group.base_ref }}
-          QUEUE_SHA: ${{ github.event.merge_group.head_sha }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = merge_group ]; then
-            [[ "$QUEUE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error title=gates-verify::merge_group event without a head_sha"; exit 1; }
-            { echo "queue=true"; echo "queue_sha=$QUEUE_SHA"; } >> "$GITHUB_OUTPUT"
-            if out="$(shared/scripts/merge-group-target.sh "$HEAD_REF" "$BASE_REF")"; then
-              printf '%s\n' "$out" | grep '^pr=' >> "$GITHUB_OUTPUT"
-            else
-              echo "::error title=gates-verify::'$HEAD_REF' names no queued pull request on '$BASE_REF'"
-            fi
+          if out="$(shared/scripts/merge-group-target.sh "$HEAD_REF" "$BASE_REF")"; then
+            printf '%s\n' "$out" | grep '^pr=' >> "$GITHUB_OUTPUT"
           else
-            echo "queue=false" >> "$GITHUB_OUTPUT"
-            if [ "$IS_PR" = true ] && [ -n "$PR" ]; then echo "pr=$PR" >> "$GITHUB_OUTPUT"; fi
+            echo "::error title=gates-verify::'$HEAD_REF' names no queued pull request on '$BASE_REF'"
           fi
 
   # The published `boonty-ai sync` runs in this job, on its own runner. Its
@@ -102,6 +96,8 @@ jobs:
   bump:
     name: bump
     needs: target
+    # A failed target job must not stop a PR event's bump check.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -116,9 +112,13 @@ jobs:
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ needs.target.outputs.pr }}
+          QUEUE: ${{ github.event_name == 'merge_group' }}
+          QUEUE_PR: ${{ needs.target.outputs.pr }}
+          EVENT_PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+          IS_PR: ${{ github.event_name == 'pull_request_target' || github.event.issue.pull_request != null }}
         run: |
           set -euo pipefail
+          if [ "$QUEUE" = true ]; then PR="$QUEUE_PR"; elif [ "$IS_PR" = true ]; then PR="$EVENT_PR"; else PR=""; fi
           [ -n "$PR" ] || exit 0
           gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json state,title,headRefName,headRefOid,baseRefName,isCrossRepository > pr.json
           # The dispatch shape: the title and branch name one version, the
@@ -201,22 +201,36 @@ jobs:
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ needs.target.outputs.pr }}
-          QUEUE: ${{ needs.target.outputs.queue }}
+          # From the event itself, not from `target`: a failed target job
+          # leaves its outputs empty, and the entry must still get a status.
+          QUEUE: ${{ github.event_name == 'merge_group' }}
+          TARGET_OK: ${{ needs.target.result == 'success' }}
+          QUEUE_PR: ${{ needs.target.outputs.pr }}
+          EVENT_PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+          IS_PR: ${{ github.event_name == 'pull_request_target' || github.event.issue.pull_request != null }}
         run: |
           set -euo pipefail
-          if [ -z "$PR" ]; then
-            if [ "$QUEUE" = true ]; then
-              # Post a failure on the entry rather than nothing: the queue
-              # would otherwise wait for its timeout.
-              echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0
+          # A queue entry that cannot be verified gets a failure with this
+          # reason (Post below), never no status: the queue would otherwise
+          # wait for its timeout.
+          fail_entry() { { echo "skip=false"; echo "reason=merge queue - $1"; } >> "$GITHUB_OUTPUT"; exit 0; }
+          if [ "$QUEUE" = true ]; then
+            PR="$QUEUE_PR"
+            [ "$TARGET_OK" = true ] || fail_entry "the target job failed; see the run"
+            [ -n "$PR" ] || fail_entry "the queue ref names no pull request"
+            gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,baseRefName,state > pr.json ||
+              fail_entry "could not read the pull request; see the run"
+            [ "$(jq -r .state pr.json)" = OPEN ] || fail_entry "the pull request is not open"
+          else
+            PR="$EVENT_PR"
+            if [ "$IS_PR" != true ] || [ -z "$PR" ]; then
+              echo "::notice title=gates-verify::not a pull request — nothing to verify"
+              echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
             fi
-            echo "::notice title=gates-verify::not a pull request — nothing to verify"
-            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,baseRefName,state > pr.json
-          if [ "$(jq -r .state pr.json)" != OPEN ]; then
-            echo "::notice title=gates-verify::PR #$PR is not open"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+            gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid,baseRefName,state > pr.json
+            if [ "$(jq -r .state pr.json)" != OPEN ]; then
+              echo "::notice title=gates-verify::PR #$PR is not open"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
           fi
           {
             echo "skip=false"
@@ -231,8 +245,10 @@ jobs:
           SHARED_REF: ${{ inputs.shared_ref }}
         run: echo "::warning::job.workflow_sha is empty, so boonty-io/.github is checked out at '${SHARED_REF:-the default branch}', not at this workflow's own commit"
 
+      # Also on every queue entry, whatever failed before it: the post script
+      # comes from this checkout.
       - name: Check out the decision script
-        if: steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != ''
+        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: boonty-io/.github
@@ -243,6 +259,7 @@ jobs:
             scripts/gates-verify-facts.sh
             scripts/lean-diff-ok.sh
             scripts/gate-content-hash.sh
+            scripts/gates-verify-post.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -299,28 +316,17 @@ jobs:
       # `success` standing on this head; a run superseded by a newer one posts
       # nothing, so it cannot race that run's verdict.
       # In the queue the status goes on the merge-group commit, never on the
-      # PR head, and a pending verdict becomes a failure (see the header).
+      # PR head, on every run, and only `success` passes there
+      # (scripts/gates-verify-post.sh; see the header).
       - name: Post gates/verified
-        if: ${{ !cancelled() && steps.pr.outputs.skip == 'false' && (steps.pr.outputs.head != '' || needs.target.outputs.queue == 'true') }}
+        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) }}
         env:
           GH_TOKEN: ${{ github.token }}
-          QUEUE: ${{ needs.target.outputs.queue }}
-          QUEUE_SHA: ${{ needs.target.outputs.queue_sha }}
+          EVENT: ${{ github.event_name }}
+          QUEUE_SHA: ${{ github.event.merge_group.head_sha }}
           PR: ${{ needs.target.outputs.pr }}
           HEAD_SHA: ${{ steps.pr.outputs.head }}
           STATE: ${{ steps.decide.outputs.state || 'failure' }}
-          DESCRIPTION: ${{ steps.decide.outputs.description || (needs.target.outputs.pr == '' && 'merge queue - the queue ref names no pull request' || 'gates-verify could not decide; see the run') }}
+          DESCRIPTION: ${{ steps.decide.outputs.description || steps.pr.outputs.reason || 'gates-verify could not decide; see the run' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          sha="$HEAD_SHA"
-          if [ "$QUEUE" = true ]; then
-            sha="$QUEUE_SHA"
-            if [ "$STATE" = pending ]; then STATE=failure; fi
-            [ -z "$PR" ] || DESCRIPTION="#$PR: $DESCRIPTION"
-            DESCRIPTION="${DESCRIPTION:0:140}"
-          fi
-          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$sha" \
-            -f state="$STATE" -f context=gates/verified \
-            -f description="$DESCRIPTION" -f target_url="$RUN_URL" --silent
-          echo "gates/verified=$STATE on $sha: $DESCRIPTION"
+        run: shared/scripts/gates-verify-post.sh "$EVENT" "$QUEUE_SHA" "$HEAD_SHA" "$PR" "$STATE" "$DESCRIPTION" "$RUN_URL"

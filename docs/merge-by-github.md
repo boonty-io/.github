@@ -52,8 +52,11 @@ ignore whitespace.
 
 **Trust.** The receipt is as trustworthy as today's local receipt files: a
 person with write access could forge either. What changes is where it is
-checked: from the default branch's workflow, against the diff and base the PR
-has when the check runs. The ruleset pins the context to GitHub Actions
+checked: on a PR event, from the default branch's workflow, against the diff
+and base the PR has when the check runs. On a queue entry (`merge_group`) the
+caller runs as it stands in the queue commit, which carries the PR's own
+changes, so a PR that edits its caller changes what runs for its entry. That
+is no wider than the gap below. The ruleset pins the context to GitHub Actions
 (integration 15368). That stops a personal token or another App from posting
 it, but not another workflow: anyone who can push a branch can add a workflow
 that posts `gates/verified` with its own `GITHUB_TOKEN`. That is the same
@@ -166,8 +169,8 @@ hotfix PRs into such a `main` are not held by this check.
 
    `issue_comment` and `pull_request_target` run from the default branch, so
    the caller takes effect once it is on `main`. `merge_group` runs the file
-   as it stands in the queue entry's commit, which is the base's file in
-   practice.
+   as it stands in the queue entry's commit: the base's file, plus any change
+   the queued PR makes to it ("Trust" above).
 2. In `rulesets/repos/<repo>.json`, add
    `{"context": "gates/verified", "integration_id": 15368}` to the required
    checks of the integration branch only ("Where it is required" above). Do

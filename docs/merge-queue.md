@@ -10,10 +10,10 @@ rebased, re-gated or re-run because the base moved.
 This replaces the strict rulesets (`strict_required_status_checks_policy:
 true`, "require branches to be up to date"). A branch has one or the other:
 a queue rule with strict off, or strict with no queue. The rollout moves one
-repository at a time (below), so both exist side by side until it ends; the
-ai-config tooling reads the live rules of the base
-(`gh api repos/<o>/<r>/rules/branches/<base>`) and takes the queue path only
-where a `merge_queue` rule is present.
+repository at a time (below), so both exist side by side until it ends. The
+ai-config tooling is planned to read the live rules of the base
+(`gh api repos/<o>/<r>/rules/branches/<base>`) and take the queue path only
+where a `merge_queue` rule is present (step S2 of the merge-queue epic).
 
 ## The flow on a queue branch
 
@@ -67,8 +67,21 @@ another sha. The shared `gates-verify.yml` therefore also runs on
 - `verify` runs the same decision as on the PR (`scripts/gates-verify.sh`:
   the last writer receipt, its base, and `content_sha256` against the PR's
   current head);
-- the status goes on the merge-group commit. "No receipt yet" is `failure`
-  there, never `pending`, and an entry whose ref names no PR gets `failure`.
+- the status goes on the merge-group commit, and only `success` passes
+  there: "no receipt yet" is `failure`, never `pending`.
+- every queue entry gets a status, whatever failed before the post: a ref
+  that names no PR, a PR that is closed or cannot be read, a failed `target`
+  job. Each gets `failure` with the reason (`scripts/gates-verify-post.sh`,
+  tested by `test/gates-verify-post.test.sh`). A queue entry with no status
+  at all would wait for `check_response_timeout_minutes`.
+
+The decision reads the PR's head when the run starts, not the head the queue
+commit was built from. A push to a queued PR removes it from the queue, so a
+push that lands between the enqueue and the run gives a verdict for a commit
+that will not merge; the PR's new head goes through the queue again.
+
+The queue caller runs from the queue commit, which carries the PR's own
+changes (`docs/merge-by-github.md`, "Trust").
 
 Re-deciding rather than passing through costs seconds and keeps one meaning
 for the context: a receipt for exactly this diff. It does not rely on GitHub
@@ -106,6 +119,11 @@ In `rulesets/repos/<repo>.json`, on the branch's ruleset: set
   of the repository's suites. `pos-app-android` uses `2` (`ci/android` is a
   16-21 minute emulator run); the others `5`.
 - `check_response_timeout_minutes`: longer than the slowest required suite.
+- `grouping_strategy`: always `ALLGREEN` on a branch that requires
+  `gates/verified`. Every entry is then built and checked on its own
+  `pr-<n>` commit, so `gates/verified` judges each PR. Under `HEADGREEN` only
+  the head of a group must pass, and the PRs below it would land without
+  their own queue verdict.
 - Under `ALLGREEN`, a failing entry costs one rebuild of every entry behind
   it. Never re-run a failed entry to get it through: a flake is quarantined
   (AGENTS.md).
