@@ -57,6 +57,25 @@ Two ways to land outside this flow remain, and neither is closed by the queue:
   The list is not exhaustive. Each caller's behaviour on a queue branch is a
   pilot check, and each moves to the enqueue command above (epic step S7).
 
+### The commit message that lands
+
+GitHub writes the queue commit's message. `gh pr merge --subject` and
+`--body-file` are ignored on a queue branch. The message follows the
+repository's squash setting as it stood when the queue built the entry's
+commit, at enqueue. Measured on webapp-core, single-commit PRs, 2026-11-12:
+
+- under `COMMIT_OR_PR_TITLE` + `COMMIT_MESSAGES` (#1178, and #1179, which
+  was enqueued before the setting changed), the commit's own message landed;
+- under `PR_TITLE` + `PR_BODY` (#1180), the PR title and the whole PR body
+  landed, footer included.
+
+So before you enqueue on a `PR_TITLE` + `PR_BODY` repository, the PR body is
+the commit message: take out AI trailers and anything that should not reach
+the branch's history, then enqueue. An edit made after the enqueue may miss
+the commit already built. Keep AI trailers out of the commits too, since a
+setting change applies only to entries built after it. ai-config#1554 has
+ai-config's `pr-policy` judge the queue commit's whole message as a backstop.
+
 A PR whose base moved still needs a rebase when it **conflicts** (`DIRTY`):
 `gh pr update-branch <n> --rebase` or a local rebase, then gates and CI on the
 new head as for any new head. `BEHIND` alone is not a reason to rebase.
@@ -73,10 +92,12 @@ queue branch's ruleset, the workflow that produces it must:
 - post on the merge-group commit: `ci-status` posts on `GITHUB_SHA`, which is
   that commit, and ignores the empty `head_sha` input (`docs/on-demand-ci.md`).
 
-PR-shaped checks (title, PR policy, branch policy, docs impact, trailer
-checks) judge the PR, which GitHub already required green before the
-enqueue. On `merge_group` they pass without judging again: the job runs and
-succeeds, since a skipped job posts nothing.
+PR-shaped checks (title, branch policy, docs impact) judge the PR, which
+GitHub already required green before the enqueue. On `merge_group` they pass
+without judging again: the job runs and succeeds, since a skipped job posts
+nothing. A check of the commit message (AI trailers) is the exception: what
+lands is the queue commit's message, not the PR's commits, so on
+`merge_group` it judges that message (see "The commit message that lands").
 
 `scripts/on-demand-guard.py` refuses a suite without `merge_group`. Before a
 repository's queue ruleset merges, check every other producer by hand
