@@ -55,6 +55,7 @@ jobs:
       - run: test/ci-hint-should-post.test.sh
       - run: test/ci-request-already-ran.test.sh
       - run: test/rulesets.test.sh
+      - run: test/rulesets-workflow-files.test.sh
       - run: test/gates-verify.test.sh
       - run: test/gates-verify-facts.test.sh
       - run: test/merge-group-target.test.sh
