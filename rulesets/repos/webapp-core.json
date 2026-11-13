@@ -15,17 +15,17 @@
       {
         "actor_id": null,
         "actor_type": "EnterpriseOwner",
-        "bypass_mode": "always"
+        "bypass_mode": "pull_request"
       },
       {
         "actor_id": null,
         "actor_type": "OrganizationAdmin",
-        "bypass_mode": "always"
+        "bypass_mode": "pull_request"
       },
       {
         "actor_id": 5,
         "actor_type": "RepositoryRole",
-        "bypass_mode": "always"
+        "bypass_mode": "pull_request"
       }
     ],
     "rules": [
@@ -38,7 +38,7 @@
       {
         "type": "pull_request",
         "parameters": {
-          "required_approving_review_count": 1,
+          "required_approving_review_count": 0,
           "dismiss_stale_reviews_on_push": false,
           "required_reviewers": [],
           "require_code_owner_review": false,
@@ -74,7 +74,7 @@
       {
         "actor_id": 5,
         "actor_type": "RepositoryRole",
-        "bypass_mode": "always"
+        "bypass_mode": "pull_request"
       }
     ],
     "rules": [
@@ -141,12 +141,15 @@
       {
         "actor_id": 5,
         "actor_type": "RepositoryRole",
-        "bypass_mode": "always"
+        "bypass_mode": "pull_request"
       }
     ],
     "rules": [
       {
         "type": "deletion"
+      },
+      {
+        "type": "non_fast_forward"
       },
       {
         "type": "pull_request",

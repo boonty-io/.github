@@ -15,17 +15,17 @@
       {
         "actor_id": null,
         "actor_type": "EnterpriseOwner",
-        "bypass_mode": "always"
+        "bypass_mode": "pull_request"
       },
       {
         "actor_id": null,
         "actor_type": "OrganizationAdmin",
-        "bypass_mode": "always"
+        "bypass_mode": "pull_request"
       },
       {
         "actor_id": 5,
         "actor_type": "RepositoryRole",
-        "bypass_mode": "always"
+        "bypass_mode": "pull_request"
       }
     ],
     "rules": [
@@ -122,7 +122,7 @@
       {
         "actor_id": 5,
         "actor_type": "RepositoryRole",
-        "bypass_mode": "always"
+        "bypass_mode": "pull_request"
       }
     ],
     "rules": [

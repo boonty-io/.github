@@ -84,8 +84,10 @@ case "$skip_bypass" in
      echo "note: bypass actors are not compared (RULESETS_SKIP_BYPASS=1: the token cannot read them)" ;;
   *) echo "error: RULESETS_SKIP_BYPASS must be 1 or empty" >&2; exit 64 ;;
 esac
-# Applied to both sides of a comparison only; never to a request body.
-view() { if [ -n "$skip_bypass" ]; then jq -c 'del(.bypass_actors)'; else cat; fi; }
+# Applied to both sides of a comparison only; never to a request body. Keys
+# are sorted (-S): GitHub returns a rule's parameters in its own key order,
+# which is not drift.
+view() { if [ -n "$skip_bypass" ]; then jq -cS 'del(.bypass_actors)'; else jq -cS .; fi; }
 
 owner="$1"; shift
 for f in "$@"; do check_file "$f"; done   # every file is valid before any call

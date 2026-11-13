@@ -127,5 +127,13 @@ jq -c '.[1] | {id: 12, source_type: "Repository"} + . | .rules |= reverse' "$F/d
 rc=$(FIX="$Q" run plan boonty-io "$(desired desired-merge-queue.json)")
 if [ "$rc" = 0 ] && grep -qx 'demo/Staging: unchanged' "$T/out"; then ok "applied queue reads unchanged"; else ko "queue round-trip (rc=$rc)"; fi
 
+# 16. GitHub returns a rule's parameters in its own key order (the live
+#     webapp-core merge queue did, and the daily plan read it as drift on
+#     2026-11-13): key order alone is never drift
+jq -c '.[1] | {id: 12, source_type: "Repository"} + . | .rules |= map(if .parameters then .parameters |= (to_entries | reverse | from_entries) else . end)' \
+  "$F/desired-merge-queue.json" > "$Q/live-12.json"
+rc=$(FIX="$Q" run plan boonty-io "$(desired desired-merge-queue.json)")
+if [ "$rc" = 0 ] && grep -qx 'demo/Staging: unchanged' "$T/out"; then ok "key order alone is not drift"; else ko "key order drift (rc=$rc)"; fi
+
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]
