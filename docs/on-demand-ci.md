@@ -185,7 +185,7 @@ on:
       pr:       { description: Pull request number,      required: false, type: string }
       base:     { description: Base branch of the PR,    required: false, type: string }
       head_sha: { description: Head sha when requested,  required: false, type: string }
-      runner:   { description: github | blacksmith | macmini, required: false, type: string, default: '' }
+      runner:   { description: github | blacksmith | macmini | deskmini, required: false, type: string, default: '' }
   merge_group:
 ```
 
@@ -198,11 +198,12 @@ otherwise anyone with write access could dispatch the suite by hand with
 `base=<head sha>`, get an empty diff, and certify a code commit as docs-only. Heavy jobs use
 `runs-on: ${{ inputs.runner == 'github' && 'ubuntu-latest' || '<blacksmith label>' }}`
 so a runner-specific failure can be reproduced on the other pool. A job that
-can also run on the self-hosted Mac mini (arm64 Linux, see "Runner routing") adds a
-third arm in front, so an empty or unknown `runner` still lands on Blacksmith:
+can also run on the self-hosted runners (the Mac mini, arm64 Linux, and the
+deskmini, x64 Linux; see "Runner routing") adds their arms in front, so an empty or
+unknown `runner` still lands on Blacksmith:
 
 ```yaml
-runs-on: ${{ inputs.runner == 'macmini' && fromJSON('{"group":"macmini","labels":["self-hosted","macmini-linux"]}') || (inputs.runner == 'github' && 'ubuntu-latest' || '<blacksmith label>') }}
+runs-on: ${{ inputs.runner == 'macmini' && fromJSON('{"group":"macmini","labels":["self-hosted","macmini-linux"]}') || (inputs.runner == 'deskmini' && fromJSON('{"group":"deskmini","labels":["self-hosted","deskmini-linux"]}') || (inputs.runner == 'github' && 'ubuntu-latest' || '<blacksmith label>')) }}
 ```
 
 Use the shared verifier rather than a local copy:
@@ -292,6 +293,21 @@ holds on the bump PR too.
   - Do not add the macmini arm to jobs that need KVM (the Android emulator):
     the VM has no nested virtualisation.
   - Setup lives in boonty-io/ci-runners.
+- `runner=deskmini` (never the default) → the `deskmini` runner group:
+  ephemeral x64 Linux runners on the office deskmini (labels `self-hosted`,
+  `linux`, `x64`, `deskmini-linux`), four jobs at a time. The same rules as the
+  Mac mini apply: a job lands there only when its `runs-on` carries the
+  deskmini arm and the dispatch passes `runner=deskmini`; the group admits the
+  internal repos it lists and never a public repo; nothing falls back to
+  Blacksmith when the deskmini is down.
+  - Each runner has its own Docker engine (Sysbox), so `services:` containers
+    work on `localhost`. x64 binaries and amd64 images run natively.
+  - Each runner container is capped at 3.5 GB and 2 CPUs, like the Mac mini's:
+    a job that runs several heavy processes side by side may need to run them
+    one after another there.
+  - Do not add the deskmini arm to jobs that need KVM (the Android emulator):
+    the runners run inside a VM with no nested virtualisation.
+  - Setup lives in boonty-io/ci-runners (`host/linux/`).
 
 ## Making it enforceable
 
