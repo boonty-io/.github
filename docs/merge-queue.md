@@ -57,6 +57,43 @@ Two ways to land outside this flow remain, and neither is closed by the queue:
   The list is not exhaustive. Each caller's behaviour on a queue branch is a
   pilot check, and each moves to the enqueue command above (epic step S7).
 
+### The commit message that lands
+
+GitHub writes the queue commit's message from the repository's squash
+setting. Whether `gh pr merge --subject` or `--body-file` reach a queue
+commit is not measured, so do not rely on them. The epic session records the
+pilot enqueues below as run without them; GitHub's timeline does not record
+the arguments. Measured on webapp-core on 2026-11-12, with single-commit PRs
+only, whose queue windows do not overlap:
+
+- #1178 and #1179 were enqueued, and landed, under `COMMIT_OR_PR_TITLE` +
+  `COMMIT_MESSAGES` (#1179: enqueued 20:02:16Z, landed 20:05:10Z). They
+  landed the commit's own message.
+- The setting moved to `PR_TITLE` + `PR_BODY` at 20:06:32Z, as the epic
+  session recorded it (the org audit log shows no event for it). #1180,
+  enqueued after the move (21:27:30Z), landed the PR title and the whole PR
+  body, footer included.
+
+None of the three was in the queue when the setting changed. Whether a change
+made while an entry is queued reaches that entry is therefore not measured,
+so change the setting only with the queue empty.
+
+To see what landed for a PR:
+`gh api repos/boonty-io/webapp-core/commits/$(gh pr view <n> --repo
+boonty-io/webapp-core --json mergeCommit --jq .mergeCommit.oid) --jq
+.commit.message`.
+
+What a PR with several commits lands is not measured yet.
+
+So before you enqueue on a `PR_TITLE` + `PR_BODY` repository, the PR body is
+the commit message: take out AI trailers and anything that should not reach
+the branch's history, then enqueue. Whether an edit made after the enqueue
+reaches the commit is not measured, so edit before. Keep AI trailers out of
+the commits too: under `COMMIT_MESSAGES` they are the message. No check
+judges the landed message yet. ai-config#1554, an open draft, would make
+ai-config's `pr-policy` check the queue commit's Conventional subject and AI
+trailers on `merge_group`.
+
 A PR whose base moved still needs a rebase when it **conflicts** (`DIRTY`):
 `gh pr update-branch <n> --rebase` or a local rebase, then gates and CI on the
 new head as for any new head. `BEHIND` alone is not a reason to rebase.
@@ -75,8 +112,15 @@ queue branch's ruleset, the workflow that produces it must:
 
 PR-shaped checks (title, PR policy, branch policy, docs impact, trailer
 checks) judge the PR, which GitHub already required green before the
-enqueue. On `merge_group` they pass without judging again: the job runs and
-succeeds, since a skipped job posts nothing.
+enqueue. A required one must still run on `merge_group` and succeed there
+without judging again, since a skipped job posts nothing. Not every one does
+today: ai-config's `pr-policy.yml` has no `merge_group` trigger, and
+`docs-impact.yml` is reusable, so each caller's triggers decide. A check of
+the commit message (AI trailers) should be the exception. What lands is the
+queue commit's message, not the PR's commits, so on `merge_group` such a
+check has to judge that message to catch anything (see "The commit message
+that lands"). None does yet; ai-config#1554 (open draft) would add
+`merge_group` to `pr-policy` and make it the first.
 
 `scripts/on-demand-guard.py` refuses a suite without `merge_group`. Before a
 repository's queue ruleset merges, check every other producer by hand
