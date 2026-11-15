@@ -65,6 +65,10 @@
               "integration_id": 8329
             },
             {
+              "context": "ci/ai-config",
+              "integration_id": 15368
+            },
+            {
               "context": "ci/dependency-audit",
               "integration_id": 15368
             },
@@ -141,6 +145,10 @@
             {
               "context": "Vercel",
               "integration_id": 8329
+            },
+            {
+              "context": "ci/ai-config",
+              "integration_id": 15368
             },
             {
               "context": "ci/dependency-audit",
