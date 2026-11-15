@@ -181,5 +181,33 @@ if [ "$rc" = 1 ] && grep -q 'duplicate' "$T/out" && [ ! -s "$LOG" ]; then ok "du
 rc=$(erun apply boonty-io "$(edesired desired-same.json)")
 if [ "$rc" = 64 ] && [ ! -s "$LOG" ]; then ok "environments has no apply"; else ko "environments apply (rc=$rc)"; fi
 
+# Names reach `gh api repos/<owner>/<repo>/...` paths: a repository (the
+# file's basename) or an environment name outside [A-Za-z0-9._-], or one that
+# is `.` or `..`, is refused before any call.
+
+# E8. an environment name with a path separator
+jq '.[0].name = "../../orgs/boonty-io"' "$here/fixtures/environments/desired-same.json" > "$T/bad-env.json"
+mkdir -p "$T/envs"; cp "$T/bad-env.json" "$T/envs/.github.json"
+rc=$(erun plan boonty-io "$T/envs/.github.json")
+if [ "$rc" = 1 ] && grep -q 'invalid environment name' "$T/out" && [ ! -s "$LOG" ]; then ok "environment name with a slash refused"; else ko "environment name with a slash (rc=$rc)"; fi
+
+# E9. an environment name that is `..`
+jq '.[0].name = ".."' "$here/fixtures/environments/desired-same.json" > "$T/envs/.github.json"
+rc=$(erun plan boonty-io "$T/envs/.github.json")
+if [ "$rc" = 1 ] && grep -q 'invalid environment name' "$T/out" && [ ! -s "$LOG" ]; then ok "environment name .. refused"; else ko "environment name .. (rc=$rc)"; fi
+
+# E10. an environments file whose repository would be `..`
+mkdir -p "$T/dots"; cp "$here/fixtures/environments/desired-same.json" "$T/dots/...json"
+rc=$(erun plan boonty-io "$T/dots/...json")
+if [ "$rc" = 1 ] && grep -q 'invalid repository name' "$T/out" && [ ! -s "$LOG" ]; then ok "environments repository .. refused"; else ko "environments repository .. (rc=$rc)"; fi
+
+# 17. a rulesets file whose repository would be `..`, and one with a space
+cp "$F/desired.json" "$T/dots/...json"
+rc=$(run plan boonty-io "$T/dots/...json")
+if [ "$rc" = 1 ] && grep -q 'invalid repository name' "$T/out" && [ ! -s "$LOG" ]; then ok "rulesets repository .. refused"; else ko "rulesets repository .. (rc=$rc)"; fi
+cp "$F/desired.json" "$T/dots/a b.json"
+rc=$(run apply boonty-io "$T/dots/a b.json")
+if [ "$rc" = 1 ] && grep -q 'invalid repository name' "$T/out" && [ ! -s "$LOG" ]; then ok "rulesets repository with a space refused"; else ko "rulesets repository with a space (rc=$rc)"; fi
+
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]

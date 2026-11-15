@@ -86,4 +86,49 @@ TABLE
 if grep -B12 -E 'scripts/environments\.sh plan' "$wf" | grep -qE "^ +if: .*&& env\.MODE == 'plan'( \}\})?$"; then ok "environments are compared on plans only"
 else ko "the environments step is not guarded by env.MODE == 'plan'"; fi
 
+# The PR-head step, run for real against a throwaway origin: it takes the
+# head's rulesets/repos and rulesets/environments as data, and a head that
+# lacks either one fails with an error. It never falls back to main's files.
+step="$(python3 -I - "$wf" <<'PY'
+import sys
+lines = open(sys.argv[1]).read().split("\n")
+i = next(n for n, l in enumerate(lines) if "name: Take the PR's ruleset and environment files" in l)
+j = next(n for n in range(i, len(lines)) if lines[n].strip() == "run: |")
+ind = len(lines[j]) - len(lines[j].lstrip()) + 2
+out = []
+for l in lines[j + 1:]:
+    if l.strip() and len(l) - len(l.lstrip()) < ind: break
+    out.append(l[ind:])
+print("\n".join(out))
+PY
+)"
+if [ -z "$step" ]; then ko "no PR-head step in $wf"; else
+  T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+  g() { git -C "$1" -c user.name=t -c user.email=t@t "${@:2}"; }
+  o="$T/origin"; git init -q -b main "$o"
+  mkdir -p "$o/rulesets/repos" "$o/rulesets/environments"
+  echo '["main"]' > "$o/rulesets/repos/a.json"; echo '["main"]' > "$o/rulesets/environments/.github.json"
+  g "$o" add -A; g "$o" commit -q -m main
+  head_with() { # head_with <branch> <shell run in the origin, from main>: prints the head sha
+    g "$o" switch -q -C "$1" main; (cd "$o" && eval "$2"); g "$o" add -A; g "$o" commit -q --allow-empty -m "$1"
+    g "$o" rev-parse HEAD; g "$o" switch -q main
+  }
+  take() { # take <sha>: run the step in a fresh clone of main; prints its rc
+    rm -rf "$T/w"; git clone -q "file://$o" "$T/w"
+    (cd "$T/w" && HEAD_SHA="$1" bash -c "$step") > "$T/step.out" 2>&1; echo $?
+  }
+  sha="$(head_with both 'echo "[\"head\"]" > rulesets/repos/a.json; echo "[\"head\"]" > rulesets/environments/.github.json; echo x > rulesets/repos/notes.txt')"
+  rc="$(take "$sha")"
+  if [ "$rc" = 0 ] && grep -q head "$T/w/rulesets/repos/a.json" && grep -q head "$T/w/rulesets/environments/.github.json" \
+     && [ ! -e "$T/w/rulesets/repos/notes.txt" ]; then ok "PR head's ruleset and environment files are taken, non-JSON dropped"
+  else ko "PR head's files not taken (rc=$rc)"; sed 's/^/    /' "$T/step.out"; fi
+  for d in repos environments; do
+    sha="$(head_with "no-$d" "git rm -rq rulesets/$d")"
+    rc="$(take "$sha")"
+    if [ "$rc" != 0 ] && grep -q "::error.*rulesets/$d" "$T/step.out"; then ok "a head without rulesets/$d fails its plan with an error"
+    else ko "a head without rulesets/$d: rc=$rc, no error"; sed 's/^/    /' "$T/step.out"; fi
+  done
+fi
+
 [ "$fail" -eq 0 ]

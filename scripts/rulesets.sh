@@ -55,8 +55,13 @@ live() { # live <owner/repo> <list> → normalized array of those rulesets, sort
   jq "$NORM"' map(norm) | sort_by(.name)' <<<"$all"
 }
 
+# The repository name goes into `gh api` paths: letters, digits, `.`, `_`
+# and `-` only, and never `.` or `..`.
+valid() { [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] && [ "$1" != . ] && [ "$1" != .. ]; }
+
 check_file() {
   local f="$1"
+  valid "$(basename "$f" .json)" || { echo "error: $f: invalid repository name \"$(basename "$f" .json)\"" >&2; exit 1; }
   jq -e 'type == "array"' "$f" >/dev/null 2>&1 || { echo "error: $f is not a JSON array of rulesets" >&2; exit 1; }
   local dup
   dup="$(jq -r 'map(.name) | group_by(.) | map(select(length > 1) | .[0]) | join(", ")' "$f")"

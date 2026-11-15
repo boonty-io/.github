@@ -74,7 +74,8 @@ jobs:
           persist-credentials: false
 
       # The PR's desired-state files only, as data; nothing from its head
-      # runs. A head without rulesets/environments keeps main's.
+      # runs. A head without either directory fails: planning it against
+      # main's files would report no change for a PR that deletes them.
       - name: Take the PR's ruleset and environment files
         if: github.event_name == 'pull_request_target'
         env:
@@ -83,7 +84,10 @@ jobs:
           set -euo pipefail
           git fetch --no-tags --depth=1 origin "$HEAD_SHA"
           for d in rulesets/repos rulesets/environments; do
-            git cat-file -e "FETCH_HEAD:$d" 2>/dev/null || continue
+            if ! git cat-file -e "FETCH_HEAD:$d" 2>/dev/null; then
+              echo "::error title=rulesets::this PR's head has no $d; a plan never falls back to main's files (rebase onto main if the branch predates it)"
+              exit 1
+            fi
             rm -rf "$d"
             git checkout FETCH_HEAD -- "$d"
             find "$d" -mindepth 1 \( ! -type f -o ! -name '*.json' \) -print -delete

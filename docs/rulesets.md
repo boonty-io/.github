@@ -9,7 +9,11 @@ a personal `gh api -X PUT` any more.
 1. Edit `rulesets/repos/<repo>.json`. To start a new repository's file:
    `scripts/rulesets.sh export boonty-io/<repo> > rulesets/repos/<repo>.json`.
 2. Open a PR. The `rulesets` workflow runs `plan` and writes the diff against
-   the live rulesets in its job summary.
+   the live rulesets in its job summary. The plan fails if the PR's head has
+   no `rulesets/repos` or no `rulesets/environments`: it never plans a PR
+   against `main`'s files instead. Rebase a branch older than either
+   directory. A file name (the repository) or an environment name outside
+   `[A-Za-z0-9._-]`, or one that is `.` or `..`, is refused before any call.
 3. Merge. Once a reviewer of the `rulesets` environment (Othella or
    HugoSudefou) approves the run, the workflow runs `apply`: rulesets named in
    the file are created or updated to match. A live ruleset that no file names
