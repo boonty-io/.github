@@ -9,7 +9,8 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin" "$T/repos"
 cat > "$T/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-# Logs every call; serves the fixtures for repos/boonty-io/demo.
+# Logs every call; serves the fixtures for repos/boonty-io/demo and the
+# environments of repos/boonty-io/.github.
 echo "gh $*" >> "$LOG"
 [ "$1" = api ] || exit 9
 shift
@@ -26,6 +27,9 @@ done
 [ -z "${FAIL_GET:-}" ] || { [ "$method" = GET ] && { echo "HTTP 404" >&2; exit 1; }; }
 [ -z "${FAIL_ONE:-}" ] || { [ "$method $path" = "GET repos/boonty-io/demo/rulesets/12" ] && { echo "HTTP 500" >&2; exit 1; }; }
 case "$method $path" in
+  "GET repos/boonty-io/.github/environments/"*/deployment-branch-policies)
+    n="${path#repos/boonty-io/.github/environments/}"; cat "$EFIX/env-${n%/deployment-branch-policies}-policies.json" ;;
+  "GET repos/boonty-io/.github/environments/"*) cat "$EFIX/env-${path##*/}.json" ;;
   "GET repos/boonty-io/demo/rulesets") cat "$FIX/live-list.json" ;;
   "GET repos/boonty-io/demo/rulesets/"*) cat "$FIX/live-${path##*/}.json" ;;
   "PUT repos/boonty-io/demo/rulesets/"*) cp "$input" "$OUT/put-${path##*/}.json"; echo '{}' ;;
@@ -34,12 +38,22 @@ case "$method $path" in
 esac
 STUB
 chmod +x "$T/bin/gh"
-export LOG="$T/log" FIX="$F" OUT="$T"
+# A scrubbed PATH: the stub is the only gh the scripts can reach, never the
+# real binary with real credentials. bash and jq are linked in, since they may
+# live outside /usr/bin:/bin.
+for t in bash jq; do ln -s "$(command -v "$t")" "$T/bin/$t"; done
+SAFE_PATH="$T/bin:/usr/bin:/bin"
+[ "$(PATH="$SAFE_PATH" command -v gh)" = "$T/bin/gh" ] || { echo "✗ the scrubbed PATH reaches a gh other than the stub"; exit 1; }
+export LOG="$T/log" FIX="$F" EFIX="$here/fixtures/environments" OUT="$T"
 fail=0; n=0
 ok() { n=$((n+1)); echo "✓ $1"; }
 ko() { n=$((n+1)); fail=$((fail+1)); echo "✗ $1"; [ -s "$T/out" ] && sed 's/^/    /' "$T/out"; }
-run() { : > "$LOG"; rm -f "$T"/put-* "$T"/post-*; PATH="$T/bin:$PATH" "$sut" "$@" > "$T/out" 2>&1; echo $?; }
+run() { : > "$LOG"; rm -f "$T"/put-* "$T"/post-*; PATH="$SAFE_PATH" "$sut" "$@" > "$T/out" 2>&1; echo $?; }
 desired() { cp "$F/$1" "$T/repos/demo.json"; echo "$T/repos/demo.json"; }
+envs="$here/../scripts/environments.sh"
+erun() { : > "$LOG"; PATH="$SAFE_PATH" "$envs" "$@" > "$T/out" 2>&1; echo $?; }
+edesired() { mkdir -p "$T/envs"; cp "$here/fixtures/environments/$1" "$T/envs/.github.json"; echo "$T/envs/.github.json"; }
+reads_only() { ! grep -qvE '^gh api repos/boonty-io/\.github/environments/[a-z-]+(/deployment-branch-policies)?( --paginate)?$' "$LOG"; }
 
 # 1. plan with drift: Main unchanged (order-insensitive), Staging update, New create, Legacy unmanaged, org ruleset ignored; exit 2, no write
 rc=$(run plan boonty-io "$(desired desired.json)")
@@ -134,6 +148,38 @@ jq -c '.[1] | {id: 12, source_type: "Repository"} + . | .rules |= map(if .parame
   "$F/desired-merge-queue.json" > "$Q/live-12.json"
 rc=$(FIX="$Q" run plan boonty-io "$(desired desired-merge-queue.json)")
 if [ "$rc" = 0 ] && grep -qx 'demo/Staging: unchanged' "$T/out"; then ok "key order alone is not drift"; else ko "key order drift (rc=$rc)"; fi
+
+# Environments (scripts/environments.sh): plan only, never a write.
+
+# E1. live matches the file (reviewers listed in another order): exit 0, GETs only
+rc=$(erun plan boonty-io "$(edesired desired-same.json)")
+if [ "$rc" = 0 ] && grep -qx '.github/rulesets: unchanged' "$T/out" && grep -qx '.github/rulesets-plan: unchanged' "$T/out" \
+   && [ -s "$LOG" ] && reads_only; then ok "environments without drift exit 0, reads only"; else ko "environments without drift (rc=$rc)"; fi
+
+# E2. a reviewer removed from the file is drift: exit 2, the diff names them
+rc=$(erun plan boonty-io "$(edesired desired-reviewer.json)")
+if [ "$rc" = 2 ] && grep -qx '.github/rulesets: drift' "$T/out" && grep -q 'HugoSudefou' "$T/out" \
+   && grep -qx '.github/rulesets-plan: unchanged' "$T/out" && reads_only; then ok "reviewer drift exits 2"; else ko "reviewer drift (rc=$rc)"; fi
+
+# E3. a deployment branch beyond main is drift
+rc=$(erun plan boonty-io "$(edesired desired-branch.json)")
+if [ "$rc" = 2 ] && grep -qx '.github/rulesets-plan: drift' "$T/out" && grep -q 'staging' "$T/out"; then ok "branch policy drift exits 2"; else ko "branch policy drift (rc=$rc)"; fi
+
+# E4. prevent_self_review differing is drift
+rc=$(erun plan boonty-io "$(edesired desired-self-review.json)")
+if [ "$rc" = 2 ] && grep -qx '.github/rulesets: drift' "$T/out" && grep -q 'prevent_self_review' "$T/out"; then ok "prevent_self_review drift exits 2"; else ko "prevent_self_review drift (rc=$rc)"; fi
+
+# E5. a failed read fails closed with exit 1, never "unchanged"
+rc=$(FAIL_GET=1 erun plan boonty-io "$(edesired desired-same.json)")
+if [ "$rc" = 1 ] && ! grep -q 'unchanged' "$T/out"; then ok "environment read failure exits 1"; else ko "environment read failure (rc=$rc)"; fi
+
+# E6. duplicate names are refused before any call
+rc=$(erun plan boonty-io "$(edesired desired-dup.json)")
+if [ "$rc" = 1 ] && grep -q 'duplicate' "$T/out" && [ ! -s "$LOG" ]; then ok "duplicate environment names refused"; else ko "duplicate environment names (rc=$rc)"; fi
+
+# E7. there is no apply: anything but plan is a usage error, before any call
+rc=$(erun apply boonty-io "$(edesired desired-same.json)")
+if [ "$rc" = 64 ] && [ ! -s "$LOG" ]; then ok "environments has no apply"; else ko "environments apply (rc=$rc)"; fi
 
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]
