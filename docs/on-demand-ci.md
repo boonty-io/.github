@@ -300,6 +300,17 @@ holds on the bump PR too.
   deskmini arm and the dispatch passes `runner=deskmini`; the group admits the
   internal repos it lists and never a public repo; nothing falls back to
   Blacksmith when the deskmini is down.
+  - Both groups' settings, verified 2026-11-15 (`visibility: selected` means
+    only the listed repos; the last two columns are workflow restriction and
+    public repos):
+
+    ```bash
+    gh api orgs/boonty-io/actions/runner-groups \
+      --jq '.runner_groups[] | select(.name=="macmini" or .name=="deskmini")
+            | [.name, .visibility, .restricted_to_workflows, .allows_public_repositories] | @tsv'
+    # macmini   selected  false  false
+    # deskmini  selected  false  false
+    ```
   - Each runner has its own Docker engine (Sysbox), so `services:` containers
     work on `localhost`. x64 binaries and amd64 images run natively.
   - Each runner container is capped at 3.5 GB and 2 CPUs, like the Mac mini's:
