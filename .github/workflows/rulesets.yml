@@ -47,8 +47,10 @@ on:
 permissions:
   contents: read
 
+# One group per PR, one for applies, one for main's plans: a plan queued
+# behind an apply that waits for its reviewer never supersedes it.
 concurrency:
-  group: rulesets-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || 'main' }}
+  group: rulesets-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || ((github.event_name == 'push' || inputs.mode == 'apply') && 'apply' || 'plan') }}
   cancel-in-progress: false
 
 jobs:

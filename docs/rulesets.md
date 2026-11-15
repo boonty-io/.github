@@ -51,7 +51,9 @@ comparison only proves the two still agree.
 | `rulesets`      | apply only: push to `main`, dispatch `apply` | `boonty-rulesets`, Administration: read and write | Othella, HugoSudefou | `main`   |
 
 A plan never waits for a reviewer, and the write key is used only by an
-apply a reviewer approved. `can_admins_bypass` is `true` on both, as live
+apply a reviewer approved. Reading an environment needs only read access to
+this repository, which is public, so the read App needs no permission beyond
+Administration: read and Metadata: read. `can_admins_bypass` is `true` on both, as live
 today: a repository admin can still deploy to `rulesets` without a review.
 
 ### Bypass actors: the tradeoff

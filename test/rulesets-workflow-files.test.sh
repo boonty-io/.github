@@ -41,6 +41,7 @@ import re, sys
 e, event, mode = sys.argv[1:]
 if not re.fullmatch(r"[\s()=|&'\w.-]+", e): sys.exit("unsupported expression: " + e)
 py = e.replace("&&", " and ").replace("||", " or ")
+py = py.replace("github.event.pull_request.number", "'37'" if event == "pull_request_target" else "''")
 py = py.replace("github.event_name", repr(event)).replace("inputs.mode", repr(mode))
 py = re.sub(r"secrets\.(\w+)", r"'\1'", py)
 if re.search(r"[A-Za-z_]\w*\.\w", re.sub(r"'[^']*'", "", py)): sys.exit("unknown context in: " + e)
@@ -63,6 +64,22 @@ workflow_dispatch apply rulesets,apply,0,RULESETS_APP_ID,RULESETS_APP_PRIVATE_KE
 pull_request_target - rulesets-plan,plan,1,RULESETS_PLAN_APP_ID,RULESETS_PLAN_APP_PRIVATE_KEY,read
 schedule - rulesets-plan,plan,1,RULESETS_PLAN_APP_ID,RULESETS_PLAN_APP_PRIVATE_KEY,read
 workflow_dispatch plan rulesets-plan,plan,1,RULESETS_PLAN_APP_ID,RULESETS_PLAN_APP_PRIVATE_KEY,read
+TABLE
+
+# Concurrency: an apply waiting for its reviewer is never superseded by a
+# plan (a pending run in a group replaces the older pending one).
+E_GROUP="$(sed -nE 's/^  group: rulesets-\$\{\{ (.*) \}\} *$/\1/p' "$wf")"
+[ -n "$E_GROUP" ] || ko "no concurrency group expression in $wf"
+while read -r ev in_mode want; do
+  [ "$in_mode" = - ] && in_mode=""
+  got="rulesets-$(value "$E_GROUP" "$ev" "$in_mode")"
+  if [ "$got" = "$want" ]; then ok "$ev ${in_mode:--}: group $got"; else ko "$ev ${in_mode:--}: group $got, want $want"; fi
+done <<'TABLE'
+push - rulesets-apply
+workflow_dispatch apply rulesets-apply
+pull_request_target - rulesets-37
+schedule - rulesets-plan
+workflow_dispatch plan rulesets-plan
 TABLE
 
 # The environment comparison runs on plans only; apply never touches them.
