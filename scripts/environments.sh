@@ -28,11 +28,20 @@ NORM='def norm: {
   branch_policies: (.branch_policies | sort_by(.type, .name))
 };'
 
+# Names go into `gh api` paths: letters, digits, `.`, `_` and `-` only, and
+# never `.` or `..`.
+valid() { [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] && [ "$1" != . ] && [ "$1" != .. ]; }
+
 for f in "$@"; do
+  valid "$(basename "$f" .json)" || { echo "error: $f: invalid repository name \"$(basename "$f" .json)\"" >&2; exit 1; }
   jq -e 'type == "array" and all(.[]; (.name | type) == "string" and (.name | length) > 0)' "$f" >/dev/null 2>&1 \
     || { echo "error: $f is not a JSON array of named environments" >&2; exit 1; }
   dup="$(jq -r 'map(.name) | group_by(.) | map(select(length > 1) | .[0]) | join(", ")' "$f")"
   [ -z "$dup" ] || { echo "error: $f has duplicate environment names: $dup" >&2; exit 1; }
+  for en in $(jq -r '.[].name | @base64' "$f"); do
+    en="$(printf '%s' "$en" | base64 -d)"
+    valid "$en" || { echo "error: $f: invalid environment name \"$en\"" >&2; exit 1; }
+  done
 done
 
 live() { # live <owner/repo> <environment> → the environment in the file's shape
