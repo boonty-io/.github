@@ -8,25 +8,28 @@
 #   daily schedule                     → plan: red when live state drifted
 #   workflow_dispatch                  → plan, or apply from main only
 #
-# The App key reaches only code on `main`. A PR is planned with
-# pull_request_target: this workflow and scripts/rulesets.sh come from `main`,
-# and only the PR's rulesets/repos/*.json is taken from its head, as data that
-# jq parses. Its token asks for Administration: read only, which GitHub shows
-# no bypass actors, so a PR plan leaves them out (RULESETS_SKIP_BYPASS=1) and
-# says so. Every other run is `main`'s own code and asks for write, so the
-# scheduled plan also catches a bypass actor edited by hand. The `rulesets`
-# environment is restricted to `main` (docs/rulesets.md), so a workflow edited
-# on a branch cannot reach the key at all.
+# Every plan also compares rulesets/environments/<repo>.json with the live
+# deployment environments that guard these keys. Nothing writes them.
 #
-# Reads and writes go through the `boonty-rulesets` GitHub App (Administration
-# read/write on the org's repositories): GITHUB_TOKEN cannot read or change
-# another repository's rulesets, and a personal token would tie the change to
-# one person's machine. Its key is only exposed to the `rulesets` environment.
+# Two environments, two GitHub Apps (docs/rulesets.md):
+#   rulesets-plan  every plan. `boonty-rulesets-read`, Administration: read.
+#                  main only, no reviewer.
+#   rulesets       apply only. `boonty-rulesets`, Administration: read/write.
+#                  main only, and a required reviewer approves each run.
+# So the write key is used only by an apply a reviewer approved. A read-only
+# token is shown no bypass actors, so every plan leaves them out
+# (RULESETS_SKIP_BYPASS=1) and says so; apply still compares them.
+#
+# A PR is planned with pull_request_target: this workflow and its scripts come
+# from `main`, and only the PR's rulesets/repos/*.json and
+# rulesets/environments/*.json are taken from its head, as data that jq
+# parses. Both environments are restricted to `main`, so a workflow edited on
+# a branch cannot reach either key.
 name: rulesets
 
 on:
   pull_request_target:
-    paths: ['rulesets/repos/**', 'scripts/rulesets.sh', '.github/workflows/rulesets.yml']
+    paths: ['rulesets/repos/**', 'rulesets/environments/**', 'scripts/rulesets.sh', 'scripts/environments.sh', '.github/workflows/rulesets.yml']
   push:
     branches: [main]
     paths: ['rulesets/repos/**', 'scripts/rulesets.sh', '.github/workflows/rulesets.yml']
@@ -58,39 +61,47 @@ jobs:
       && (github.event_name != 'workflow_dispatch' || inputs.mode != 'apply' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: rulesets
+    # The same condition as MODE below (environment cannot read env).
+    environment: ${{ (github.event_name == 'push' || inputs.mode == 'apply') && 'rulesets' || 'rulesets-plan' }}
+    env:
+      MODE: ${{ (github.event_name == 'push' || inputs.mode == 'apply') && 'apply' || 'plan' }}
+      OWNER: ${{ github.repository_owner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # The PR's ruleset files only, as data; nothing from its head runs.
-      - name: Take the PR's ruleset files
+      # The PR's desired-state files only, as data; nothing from its head
+      # runs. A head without rulesets/environments keeps main's.
+      - name: Take the PR's ruleset and environment files
         if: github.event_name == 'pull_request_target'
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           git fetch --no-tags --depth=1 origin "$HEAD_SHA"
-          rm -rf rulesets/repos
-          git checkout FETCH_HEAD -- rulesets/repos
-          find rulesets/repos -mindepth 1 \( ! -type f -o ! -name '*.json' \) -print -delete
+          for d in rulesets/repos rulesets/environments; do
+            git cat-file -e "FETCH_HEAD:$d" 2>/dev/null || continue
+            rm -rf "$d"
+            git checkout FETCH_HEAD -- "$d"
+            find "$d" -mindepth 1 \( ! -type f -o ! -name '*.json' \) -print -delete
+          done
 
       - name: Mint the rulesets App token
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.RULESETS_APP_ID }}
-          private-key: ${{ secrets.RULESETS_APP_PRIVATE_KEY }}
+          # Each environment holds only its own App's secrets.
+          app-id: ${{ (github.event_name == 'push' || inputs.mode == 'apply') && secrets.RULESETS_APP_ID || secrets.RULESETS_PLAN_APP_ID }}
+          private-key: ${{ (github.event_name == 'push' || inputs.mode == 'apply') && secrets.RULESETS_APP_PRIVATE_KEY || secrets.RULESETS_PLAN_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-          permission-administration: ${{ github.event_name == 'pull_request_target' && 'read' || 'write' }}
+          permission-administration: ${{ (github.event_name == 'push' || inputs.mode == 'apply') && 'write' || 'read' }}
 
       - name: Plan or apply
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          MODE: ${{ (github.event_name == 'push' || inputs.mode == 'apply') && 'apply' || 'plan' }}
-          OWNER: ${{ github.repository_owner }}
-          RULESETS_SKIP_BYPASS: ${{ github.event_name == 'pull_request_target' && '1' || '' }}
+          # '0', not '': `cond && '' || '1'` would always be '1'.
+          RULESETS_SKIP_BYPASS: ${{ (github.event_name == 'push' || inputs.mode == 'apply') && '0' || '1' }}
         run: |
           set -uo pipefail
           rc=0
@@ -110,5 +121,34 @@ jobs:
           fi
           if [ "$rc" -eq 2 ]; then
             echo "::error title=rulesets::live rulesets drifted from rulesets/repos; update the files or re-apply"
+          fi
+          exit "$rc"
+
+      # Also after a rulesets drift (that step exits 2), so one drift never
+      # hides the other.
+      - name: Compare environments
+        if: ${{ !cancelled() && steps.app-token.outcome == 'success' && env.MODE == 'plan' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          rc=0
+          scripts/environments.sh plan "$OWNER" rulesets/environments/*.json rulesets/environments/.*.json > env.txt 2>&1 || rc=$?
+          cat env.txt
+          {
+            echo "### environments plan"
+            echo '```diff'
+            cat env.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # 2 = drift. Nothing applies environments: an owner changes them in
+          # Settings (docs/rulesets.md), then the file must match.
+          if [ "$rc" -eq 2 ] && [ "$GITHUB_EVENT_NAME" = pull_request_target ]; then
+            echo "::notice title=environments::this PR changes environment protection; an owner must make the same change in Settings"
+            exit 0
+          fi
+          if [ "$rc" -eq 2 ]; then
+            echo "::error title=environments::live environments drifted from rulesets/environments; an owner must restore them, or update the file"
           fi
           exit "$rc"

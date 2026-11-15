@@ -1,0 +1,1 @@
+{"id":4,"name":"rulesets-plan","can_admins_bypass":true,"protection_rules":[{"id":5,"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}

@@ -1,0 +1,47 @@
+[
+  {
+    "name": "rulesets-plan",
+    "can_admins_bypass": true,
+    "prevent_self_review": false,
+    "reviewers": [],
+    "deployment_branch_policy": {
+      "protected_branches": false,
+      "custom_branch_policies": true
+    },
+    "branch_policies": [
+      {
+        "name": "main",
+        "type": "branch"
+      },
+      {
+        "name": "staging",
+        "type": "branch"
+      }
+    ]
+  },
+  {
+    "name": "rulesets",
+    "can_admins_bypass": true,
+    "prevent_self_review": false,
+    "reviewers": [
+      {
+        "type": "User",
+        "name": "HugoSudefou"
+      },
+      {
+        "type": "User",
+        "name": "Othella"
+      }
+    ],
+    "deployment_branch_policy": {
+      "protected_branches": false,
+      "custom_branch_policies": true
+    },
+    "branch_policies": [
+      {
+        "name": "main",
+        "type": "branch"
+      }
+    ]
+  }
+]
