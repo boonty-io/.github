@@ -37,19 +37,35 @@ where a `merge_queue` rule is present (step S2 of the merge-queue epic).
 
 Two ways to land outside this flow remain, and neither is closed by the queue:
 
-- A ruleset bypass actor with `bypass_mode: always` (webapp-core's
-  RepositoryRole 5, admin) can still merge straight to the branch, as it can
-  bypass strict today. Use it only for the rollback below, on the owner's go.
+- A ruleset bypass actor can still merge outside the queue: `gh pr merge
+  --admin` lands the PR at once, skipping the queue and its required checks.
+  Every queued branch's bypass actors use `bypass_mode: pull_request`, so they
+  can only merge a pull request, never push straight to the branch. A
+  `bypass_mode: always` actor could also push directly, and no queued branch
+  carries one. List them with:
+
+  ```bash
+  for f in rulesets/repos/*.json; do jq -r --arg f "${f##*/}" '.[] | select([.rules[].type] | index("merge_queue")) | "\($f) \(.name): \([.bypass_actors[] | "\(.actor_type)=\(.bypass_mode)"] | join(", "))"' "$f"; done
+  ```
+
+  Use the bypass only for ai-config bumps, which need no CI or deployment
+  (Amélie, 2026-11-16), and for the rollback below, on the owner's go.
 - A bot, script or session that calls `gh pr merge` itself no longer merges
   directly on a queue branch: GitHub's queue decides the merge, so such a call is
   expected to enqueue the PR. The callers known today:
   - bots that merge directly, without `--auto`: ai-config's
-    `.github/workflows/auto-merge.yml`, and `bump-sweep.sh`, a local script
-    in `~/Code/boonty/.clones` that is in no repository (`gh pr merge <n> -R
-    boonty-io/<repo> --squash --delete-branch --match-head-commit <h>`);
+    `.github/workflows/auto-merge.yml`, and `bump-sweep.sh` (internal-tools
+    `bump-merger/`), which merges ai-config bumps by the bypass above
+    (`gh pr merge <n> -R boonty-io/<repo> --admin --squash
+    --match-head-commit <h>`). It must not pass `--delete-branch`: gh refuses
+    that flag on a queue repo with "Cannot use -d or --delete-branch when merge
+    queue enabled", which skipped the ai-config v0.128.0 bumps on 2026-11-16.
+    internal-tools#3 removes the flag and deletes the bump branch through the
+    refs API instead;
   - the queue orchestrator, which merges directly
     (ai-config `commands/orchestrate.md`: `gh pr merge <n> --squash
-    --match-head-commit <H>`);
+    --match-head-commit <H>`). A plain call enqueues the PR. For ai-config
+    bumps it adds `--admin`, as bump-sweep.sh does;
   - worker owners in a repository that requires `gates/verified`, which
     ai-config `shared/55` and `shared/43` tell to run `gh pr merge --auto
     --squash`.
