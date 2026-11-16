@@ -57,9 +57,11 @@ Two ways to land outside this flow remain, and neither is closed by the queue:
     `.github/workflows/auto-merge.yml`, and `bump-sweep.sh` (internal-tools
     `bump-merger/`), which merges ai-config bumps by the bypass above
     (`gh pr merge <n> -R boonty-io/<repo> --admin --squash
-    --match-head-commit <h>`). It passes no `--delete-branch`: gh refused it on
-    queue repos with "Cannot use -d or --delete-branch when merge queue
-    enabled" (ai-config v0.128.0 bumps, 2026-11-16, internal-tools#3);
+    --match-head-commit <h>`). It must not pass `--delete-branch`: gh refuses
+    that flag on a queue repo with "Cannot use -d or --delete-branch when merge
+    queue enabled", which skipped the ai-config v0.128.0 bumps on 2026-11-16.
+    internal-tools#3 removes the flag and deletes the bump branch through the
+    refs API instead;
   - the queue orchestrator, which merges directly
     (ai-config `commands/orchestrate.md`: `gh pr merge <n> --squash
     --match-head-commit <H>`). A plain call enqueues the PR. For ai-config
