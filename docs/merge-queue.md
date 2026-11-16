@@ -207,10 +207,9 @@ one is narrowed. Its rollback differs (see "Rollout and rollback").
 
 A queue entry is a full CI run on a new commit. Before a repository moves:
 
-- device runs: `pos-android-e2e_autotests`' device workflow runs on
-  `merge_group` today (`android-device-tests.yml` accepts a `merge_group`
-  run). Making it skip `merge_group` is a prerequisite of that repository's
-  move, since device time is scarce;
+- device runs: device time is scarce, so a queue entry must not start one.
+  `pos-android-e2e_autotests`' `android-device-tests.yml` ignores a
+  `merge_group` upstream since pos-android-e2e_autotests#124;
 - shared state: a suite that writes a shared database (api-core
   `update-database`) needs a concurrency group;
 - Vercel: a required `Vercel` context, and an `ci/e2e` that waits for a
