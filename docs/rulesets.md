@@ -29,8 +29,9 @@ A branch's merge queue is a `merge_queue` rule in the same file, with
 Organization rulesets and classic branch protection (still used by
 `pos-app-android` `main`) are outside this mechanism. `pos-app-android`
 `develop` moves from classic protection to `rulesets/repos/pos-app-android.json`.
-Once that ruleset has applied, an admin removes `develop`'s classic protection:
-until then, its strict setting still applies.
+Once that ruleset has applied and a first queue entry has landed, an admin
+removes `develop`'s classic protection: until then, its strict setting still
+applies.
 
 `scripts/rulesets.sh` is tested by `test/rulesets.test.sh` against a stub
 `gh`. A failed read of a repository's rulesets stops the run before any write
