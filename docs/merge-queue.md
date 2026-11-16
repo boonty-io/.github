@@ -37,16 +37,23 @@ where a `merge_queue` rule is present (step S2 of the merge-queue epic).
 
 Two ways to land outside this flow remain, and neither is closed by the queue:
 
-- A ruleset bypass actor with `bypass_mode: always` (webapp-core's
-  RepositoryRole 5, admin) can still merge straight to the branch, as it can
-  bypass strict today. Use it only for the rollback below, on the owner's go.
+- A ruleset bypass actor can still merge outside the queue: `gh pr merge
+  --admin` lands the PR at once, skipping the queue and its required checks.
+  With `bypass_mode: always` (webapp-core's RepositoryRole 5, admin) it can
+  also push straight to the branch. With `bypass_mode: pull_request`, which
+  every other queued branch's admin actor uses, it can only merge a pull
+  request. The crm and pos-android-e2e_autotests `main` rulesets carry that
+  pull_request-mode actor too. Use the bypass only for ai-config bumps, which
+  need no CI or deployment (Amélie, 2026-11-16), and for the rollback below,
+  on the owner's go.
 - A bot, script or session that calls `gh pr merge` itself no longer merges
   directly on a queue branch: GitHub's queue decides the merge, so such a call is
   expected to enqueue the PR. The callers known today:
   - bots that merge directly, without `--auto`: ai-config's
-    `.github/workflows/auto-merge.yml`, and `bump-sweep.sh`, a local script
-    in `~/Code/boonty/.clones` that is in no repository (`gh pr merge <n> -R
-    boonty-io/<repo> --squash --delete-branch --match-head-commit <h>`);
+    `.github/workflows/auto-merge.yml`, and `bump-sweep.sh` (internal-tools
+    `bump-merger/`), which merges ai-config bumps by the bypass above
+    (`gh pr merge <n> -R boonty-io/<repo> --admin --squash
+    --match-head-commit <h>`; gh refuses `--delete-branch` on a queue repo);
   - the queue orchestrator, which merges directly
     (ai-config `commands/orchestrate.md`: `gh pr merge <n> --squash
     --match-head-commit <H>`);
