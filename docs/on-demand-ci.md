@@ -91,34 +91,31 @@ It is a separate reusable workflow because it needs `statuses: write`: a
 reusable workflow cannot ask for more than its caller grants, so putting it in
 `ci-request.yml` would break every consumer that has not opted in.
 
-```yaml
-on:
-  pull_request:
-    types: [labeled, opened, reopened, synchronize, ready_for_review]
-  issue_comment:
-    types: [created]
-# A group keeps one pending run, so hint-only events (a draft opened, reopened,
-# pushed to) queue apart from requests: otherwise a push behind a queued
-# `ci:run` replaces it. Hints cancel each other and never touch a request.
-# The hint predicate appears twice (group, cancel-in-progress): keep them identical.
-concurrency:
-  group: ci-request-${{ github.event.pull_request.number || github.event.issue.number }}-${{ (github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'opened' && github.event.pull_request.draft))) && 'hint' || 'request' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'opened' && github.event.pull_request.draft)) }}
-jobs:
-  request:
-    uses: boonty-io/.github/.github/workflows/ci-request.yml@<sha> # main
-    permissions: { contents: read, actions: write, pull-requests: write }
-    with:
-      workflows: tests.yml,ci.yml
-  hint:
-    uses: boonty-io/.github/.github/workflows/ci-hint.yml@<sha> # main
-    permissions: { contents: read, pull-requests: read, statuses: write }
-    with:
-      contexts: ci/tests,ci/build
-```
+The caller to copy is [`templates/ci-request.yml`](../templates/ci-request.yml):
+both trigger sets, the `ci-hint.yml` job, and the concurrency group.
+
+### Prefilter: non-requests bill nothing
+
+Every label, every PR comment and every issue comment starts a `ci-request` run. Without a job
+`if:`, each one ran both jobs on `ubuntu-latest` only for
+`ci-request-decide.sh` to answer "not a request". The template's jobs carry
+one `if:` that skips them, so the run bills nothing, unless the event is a
+`pull_request` other than `labeled`, the `ci:run` label, or a PR comment
+starting with `/ci`. It is a superset of the decision script, which still
+decides: `test/ci-request-prefilter.test.py` evaluates the template's
+expression against every decision fixture and fails if a request or a hint
+would be skipped.
+
+A skipped run still joins the workflow's concurrency group, and a group keeps
+one pending run, so skipped runs queue in their own `'noop'` slot: in the
+request slot one would replace a queued `ci:run`.
+
+`issue_comment` runs read the workflow file on the default branch, so on a
+gitflow repo the comment half of the saving starts only when the change
+reaches `main`.
 
 The guard accepts exactly `[labeled]` (label and `/ci` only: no auto-run on
-ready, no hint) or that five-type set, and with the latter requires one
+ready, no hint) or the template's five-type set, and with the latter requires one
 `ci-hint.yml` job with `contexts`, `statuses: write`, `contents: read` and
 `pull-requests: read`. If it sets a workflow `concurrency`, the group must
 split on `github.event.action` into `'hint'` and `'request'`, and

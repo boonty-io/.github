@@ -82,3 +82,4 @@ jobs:
       - run: |
           python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet --user 'pyyaml==6.0.2'
           python3 test/on-demand-guard.test.py
+          python3 test/ci-request-prefilter.test.py

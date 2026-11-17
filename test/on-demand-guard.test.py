@@ -177,8 +177,8 @@ class Guard(unittest.TestCase):
     def test_hint_without_statuses_write(self):
         self.refuses(self.hinted(self.HINT_JOB.replace("      statuses: write\n", "")), "lacks `statuses: write`")
 
-    # The documented block, read from docs/on-demand-ci.md so the two cannot drift.
-    with open(os.path.join(HERE, "..", "docs", "on-demand-ci.md")) as _f:
+    # The documented block, read from the caller template so the two cannot drift.
+    with open(os.path.join(HERE, "..", "templates", "ci-request.yml")) as _f:
         _doc = _f.read()
     SPLIT = _doc[_doc.index("concurrency:\n  group: ci-request-"):]
     SPLIT = SPLIT[:SPLIT.index("\njobs:") + 1]

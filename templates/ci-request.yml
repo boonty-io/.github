@@ -6,19 +6,31 @@ name: ci-request
 
 on:
   pull_request:
-    types: [labeled]
+    types: [labeled, opened, reopened, synchronize, ready_for_review]
   issue_comment:
     types: [created]
 
 permissions: {}
 
+# A group keeps one pending run, so three slots:
+# - 'hint': a draft opened, reopened or pushed to. Hints cancel each other and
+#   never touch a request (otherwise a push behind a queued `ci:run` replaces it).
+# - 'noop': the jobs' `if:` below skips the run (another label, a comment that
+#   is not `/ci`). A skipped run in the request slot would replace a queued request.
+# - 'request': everything else.
+# The hint predicate appears twice (group, cancel-in-progress) and the prefilter
+# three times (group, both jobs): keep each copy identical
+# (test/ci-request-prefilter.test.py reads them from this file).
 concurrency:
-  group: ci-request-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: false
+  group: ci-request-${{ github.event.pull_request.number || github.event.issue.number }}-${{ !(github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name == 'ci:run') || github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/ci')) && 'noop' || (github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'opened' && github.event.pull_request.draft))) && 'hint' || 'request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened' || (github.event.action == 'opened' && github.event.pull_request.draft)) }}
 
 jobs:
   request:
-    # Everything else is the shared workflow's decision.
+    # Prefilter: a run that can never be a request (another label, a comment
+    # that is not `/ci`) skips its jobs and bills nothing. A superset of
+    # scripts/ci-request-decide.sh, which still makes the decision.
+    if: github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name == 'ci:run') || github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/ci')
     # Replace <sha> with the boonty-io/.github main commit to pin (docs/on-demand-ci.md, "Pinning").
     uses: boonty-io/.github/.github/workflows/ci-request.yml@<sha> # main
     permissions:
@@ -27,3 +39,13 @@ jobs:
       pull-requests: write
     with:
       workflows: tests.yml,ci.yml
+
+  hint:
+    if: github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name == 'ci:run') || github.event_name == 'issue_comment' && github.event.issue.pull_request && startsWith(github.event.comment.body, '/ci')
+    uses: boonty-io/.github/.github/workflows/ci-hint.yml@<sha> # main
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    with:
+      contexts: ci/tests,ci/build
