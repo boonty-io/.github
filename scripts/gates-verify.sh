@@ -88,8 +88,10 @@ RULES='
   # (scripts/lean-diff-ok.sh), never the receipt.
   def lean_gates_ok: .gates == {"code-review": "pass"};
   # ai-config bump PR, on the facts (no receipt needed): the dispatch title and
-  # branch name one version, the head is not a fork, and the repo is a
-  # consumer. The content is never trusted from the facts: the PR passes only
+  # branch name one version (or the branch is the stable
+  # chore/bump-ai-config-latest, updated in place, which names none: the title
+  # alone does), the head is not a fork, and the repo is a consumer. The
+  # content is never trusted from the facts: the PR passes only
   # when scripts/bump-reproduces.sh reproduced it (<bump-reproduces> = true).
   def bump_version:
     (.title | capture("\\Achore\\(deps\\): bump @boonty-io/ai-config to v(?<v>[0-9]+\\.[0-9]+\\.[0-9]+)\\z").v);
@@ -102,7 +104,8 @@ RULES='
     bump_version as $v
     | (.repo != "boonty-io/ai-config" and .repo != "boonty-io/.github"
        and .cross_repo == false
-       and .head_ref == ("chore/bump-ai-config-v" + $v));
+       and (.head_ref == ("chore/bump-ai-config-v" + $v)
+            or .head_ref == "chore/bump-ai-config-latest"));
 '
 
 out() { # out <state> <description>

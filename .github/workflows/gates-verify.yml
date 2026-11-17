@@ -126,11 +126,14 @@ jobs:
           if [ "$QUEUE" = true ]; then PR="$QUEUE_PR"; elif [ "$IS_PR" = true ]; then PR="$EVENT_PR"; else PR=""; fi
           [ -n "$PR" ] || exit 0
           gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json state,title,headRefName,headRefOid,baseRefName,isCrossRepository > pr.json
-          # The dispatch shape: the title and branch name one version, the
-          # head is not a fork. verify re-checks it on its own facts.
+          # The dispatch shape: the title and branch name one version (or the
+          # branch is the stable chore/bump-ai-config-latest, which names none:
+          # the title alone does), the head is not a fork. verify re-checks it
+          # on its own facts (scripts/gates-verify.sh exempt_bump);
+          # test/gates-verify-resolve.test.sh holds the two rules equal.
           version="$(jq -r 'select(.state == "OPEN" and .isCrossRepository == false)
             | (.title | capture("\\Achore\\(deps\\): bump @boonty-io/ai-config to v(?<v>[0-9]+\\.[0-9]+\\.[0-9]+)\\z").v) as $v
-            | select(.headRefName == ("chore/bump-ai-config-v" + $v)) | $v' pr.json 2>/dev/null || true)"
+            | select(.headRefName == ("chore/bump-ai-config-v" + $v) or .headRefName == "chore/bump-ai-config-latest") | $v' pr.json 2>/dev/null || true)"
           if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             {
               echo "version=$version"
