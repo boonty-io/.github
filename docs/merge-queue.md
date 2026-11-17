@@ -60,8 +60,9 @@ Two ways to land outside this flow remain, and neither is closed by the queue:
     --match-head-commit <h>`). It must not pass `--delete-branch`: gh refuses
     that flag on a queue repo with "Cannot use -d or --delete-branch when merge
     queue enabled", which skipped the ai-config v0.128.0 bumps on 2026-11-16.
-    internal-tools#3 removes the flag and deletes the bump branch through the
-    refs API instead;
+    Since internal-tools#3 (merged 2026-11-16) the script passes no
+    `--delete-branch` and deletes the bump branch through the refs API after
+    the merge;
   - the queue orchestrator, which merges directly
     (ai-config `commands/orchestrate.md`: `gh pr merge <n> --squash
     --match-head-commit <H>`). A plain call enqueues the PR. For ai-config
