@@ -150,6 +150,11 @@ expectb none.json bump.json '' pending 'no gate receipt'
 expectb none.json bump.json yes pending 'no gate receipt'
 # the facts must have the dispatch shape
 expectb none.json bump-branch-mismatch.json true pending 'no gate receipt'
+# The dispatch run's stable branch, updated in place release after release:
+# it names no version, so the title alone does (ai-config dispatch-consumer-update.yml).
+expectb none.json bump-stable.json true success 'exempt: ai-config bump v0.110.0 reproduced'
+expectb none.json bump-stable-suffix.json true pending 'no gate receipt'
+expectb none.json bump-stable.json false pending 'no gate receipt'
 expectb none.json bump-prerelease.json true pending 'no gate receipt'
 expectb none.json bump-title-unanchored.json true pending 'no gate receipt'
 expectb none.json bump-fork.json true pending 'no gate receipt'
