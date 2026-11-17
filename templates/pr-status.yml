@@ -1,0 +1,23 @@
+# Draft PR status label — copy into <repo>/.github/workflows/pr-status.yml.
+# See boonty-io/.github .github/workflows/pr-status.yml for what it does and
+# why it can be trusted. Replace <sha> with the boonty-io/.github main commit
+# to pin (docs/on-demand-ci.md, "Pinning").
+name: pr-status
+
+on:
+  issue_comment:
+    types: [created, edited]
+  pull_request_target:
+    types: [ready_for_review, converted_to_draft, closed]
+
+permissions: {}
+
+jobs:
+  status:
+    # Every other comment skips the job and bills nothing.
+    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request && startsWith(github.event.comment.body, '<!-- boonty-plan/v1 ')
+    uses: boonty-io/.github/.github/workflows/pr-status.yml@<sha> # main
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
