@@ -90,7 +90,8 @@ RULES='
   # ai-config bump PR, on the facts (no receipt needed): the dispatch title and
   # branch name one version (or the branch is the stable
   # chore/bump-ai-config-latest, updated in place, which names none: the title
-  # alone does), the head is not a fork, and the repo is a consumer. The content is never trusted from the facts: the PR passes only
+  # alone does), the head is not a fork, and the repo is a consumer. The
+  # content is never trusted from the facts: the PR passes only
   # when scripts/bump-reproduces.sh reproduced it (<bump-reproduces> = true).
   def bump_version:
     (.title | capture("\\Achore\\(deps\\): bump @boonty-io/ai-config to v(?<v>[0-9]+\\.[0-9]+\\.[0-9]+)\\z").v);

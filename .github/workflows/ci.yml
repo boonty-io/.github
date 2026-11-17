@@ -57,6 +57,7 @@ jobs:
       - run: test/rulesets.test.sh
       - run: test/rulesets-workflow-files.test.sh
       - run: test/gates-verify.test.sh
+      - run: test/gates-verify-resolve.test.sh
       - run: test/gates-verify-facts.test.sh
       - run: test/merge-group-target.test.sh
       - run: test/gates-verify-post.test.sh

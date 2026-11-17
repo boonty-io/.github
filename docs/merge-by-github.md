@@ -112,7 +112,9 @@ ai-config's dispatch opens carry no receipt. With no writer's receipt,
 - the title and the head branch (`chore/bump-ai-config-vX.Y.Z`) name the same
   version, or the head branch is the stable `chore/bump-ai-config-latest` that
   the daily dispatch updates in place (the title alone names the version); the
-  head is not a fork, and the repository is neither ai-config nor this one;
+  head is not a fork, and the repository is neither ai-config nor this one.
+  On the stable branch the dispatch rewrites the title on every push; a stale
+  title names a version the content does not reproduce, so it stays `pending`;
 - `scripts/bump-reproduces.sh` exits 0:
   - the version is newer than both the merge base's and the base tip's;
   - `package.json`, `pnpm-lock.yaml` and `pnpm-workspace.yaml` equal their
