@@ -1,0 +1,42 @@
+{
+  "sha": "fc9b45e4561fe4b7644605fd98cd7a01a4815979",
+  "gate": "code-review",
+  "verdict": "pass",
+  "diff_hash": "38ed19e3833b66a8a26dd6ffda994aee8f8fe1a6",
+  "base": "origin/main",
+  "merge_base": "337524bec22f7eabe889856bc423c39adfca991b",
+  "timestamp": "2026-11-18T01:03:33.736Z",
+  "summary": "No blocking defects. The design is sound: no PR code is checked out, permission comes from the collaborators API, line 1 is parsed strictly against allow-lists, the label is added before the others are removed, and both tests are wired into ci.yml. The template's `if:` precedence (`&&` binds tighter than `||`) is correct. The two warns are fail-open and fail-silent behaviour in scripts/pr-status.sh. A comments-fetch failure reads as \"no plan\" and strips a valid label. A failed label delete is swallowed, which leaves a duplicate label under a green run. Mutation arms B1 to B8 cover the draft check, the length cap, the phase and status allow-lists, the writer check, newest-first ordering, the removal loop and the login shape. The `state=closed` branch, the marker regex and the add-before-remove ordering have no recorded mutation arm, though tests cover them. I did not run the tests.",
+  "findings": [
+    {
+      "file": "scripts/pr-status.sh",
+      "line": 41,
+      "severity": "warn",
+      "note": "A failed comments fetch is hidden because the `done < <(gh ... | jq ...)` process substitution ignores pipefail, so `line` stays empty and the decision is \"no plan comment\". The script then strips a correct `pr:*` label on a transient API error. Capture the fetch into a variable first so `set -e` aborts, or exit non-zero on a fetch failure."
+    },
+    {
+      "file": "scripts/pr-status.sh",
+      "line": 60,
+      "severity": "warn",
+      "note": "The DELETE has `|| true` and discards output, so a failed removal leaves two `pr:*` labels with a green run. At least print a `::warning::`, and consider failing the run when a removal fails."
+    },
+    {
+      "file": "scripts/pr-status.sh",
+      "line": 35,
+      "severity": "nit",
+      "note": "A CRLF-terminated line 1 keeps a trailing `\\r`, which fails the `-->$` marker regex and silently means no label. Strip `\\r` after the split."
+    },
+    {
+      "file": "test/pr-status-decide.test.sh",
+      "line": 38,
+      "severity": "nit",
+      "note": "The comment \"extra keys' values\" does not describe the cases below it. The `$(m gates shipped)` case tests a bad status value, not an extra key."
+    }
+  ],
+  "findings_dropped": 0,
+  "summary_truncated_chars": 0,
+  "source": "report",
+  "escalated": false,
+  "contract_violated": false,
+  "model": "sonnet"
+}

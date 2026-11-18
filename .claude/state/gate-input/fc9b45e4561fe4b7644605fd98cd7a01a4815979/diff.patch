@@ -1,0 +1,440 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 0b267ec..83f386e 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -69,6 +69,8 @@ jobs:
+       - run: test/install-release-tool.test.sh
+       - run: test/ci-request-dispatch.test.sh
+       - run: test/ci-hint-post.test.sh
++      - run: test/pr-status-decide.test.sh
++      - run: test/pr-status.test.sh
+       - run: test/seed-drift-check.test.sh
+ 
+   on-demand-guard:
+diff --git a/.github/workflows/pr-status.yml b/.github/workflows/pr-status.yml
+new file mode 100644
+index 0000000..2596ff7
+--- /dev/null
++++ b/.github/workflows/pr-status.yml
+@@ -0,0 +1,71 @@
++# pr-status — keep a draft PR's one `pr:<phase>` label in step with its plan.
++#
++# Reusable (`workflow_call`). A consumer calls it from a short
++# `.github/workflows/pr-status.yml` (templates/pr-status.yml):
++#
++#   issue_comment / created, edited     only a PR comment whose body starts
++#                                        with `<!-- boonty-plan/v1 ` (job if:)
++#   pull_request_target / ready_for_review, converted_to_draft, closed
++#
++# Only an open draft carries a label, exactly one of pr:test,
++# pr:implementation, pr:gates, pr:ci, pr:blocked, taken from the phase on
++# line 1 of the PR's plan comment (ai-config shared/48). Out of draft, closed
++# or merged, every pr:* label goes: GitHub's own ready / queue / merged state
++# takes over. Converted back to draft, the label comes back from the plan.
++#
++# Trust. Nothing from the event decides: scripts/pr-status.sh reads the PR
++# and its comments live, takes the newest-updated plan comment whose author
++# has admin, maintain or write permission (collaborators API, never
++# author_association), and scripts/pr-status-decide.sh parses its line 1
++# only: at most 256 characters, the exact marker shape, allow-listed phase
++# and status. No PR code is checked out: the only checkout is this
++# repository, at this workflow's own commit, for the two scripts. Values
++# reach the scripts through `env:`, never through `${{ }}` in a `run:`.
++#
++# Labels are written with the job's GITHUB_TOKEN, whose events start no
++# workflow, so a label write never triggers ci-request or anything else.
++# One run at a time per PR; a run that waits reads the PR as it is when it
++# starts, so the last one leaves the right label.
++name: pr-status
++
++on:
++  workflow_call:
++    inputs:
++      runs_on:
++        description: Runner label (a JSON string or array), e.g. '"ubuntu-latest"' or '["self-hosted","deskmini"]'.
++        required: false
++        default: '"ubuntu-latest"'
++        type: string
++
++permissions: {}
++
++jobs:
++  label:
++    name: pr-status
++    runs-on: ${{ fromJSON(inputs.runs_on) }}
++    timeout-minutes: 3
++    concurrency:
++      group: pr-status-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
++      cancel-in-progress: false
++    permissions:
++      contents: read       # collaborators/<login>/permission
++      issues: write        # labels on the PR, and creating a missing pr:* label
++      pull-requests: read  # the live PR read
++    steps:
++      - name: Check out the scripts
++        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
++        with:
++          repository: boonty-io/.github
++          ref: ${{ job.workflow_sha }}
++          sparse-checkout: |
++            scripts/pr-status.sh
++            scripts/pr-status-decide.sh
++          sparse-checkout-cone-mode: false
++          persist-credentials: false
++
++      - name: Set the status label
++        env:
++          GH_TOKEN: ${{ github.token }}
++          REPO: ${{ github.repository }}
++          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
++        run: scripts/pr-status.sh
+diff --git a/docs/pr-status.md b/docs/pr-status.md
+new file mode 100644
+index 0000000..193cfb9
+--- /dev/null
++++ b/docs/pr-status.md
+@@ -0,0 +1,28 @@
++# Draft PR status labels (`pr-status.yml`)
++
++A draft PR carries exactly one label that says where its work stands: `pr:test`, `pr:implementation`, `pr:gates`, `pr:ci` or `pr:blocked`. The label follows the `phase` on line 1 of the PR's plan comment, the `boonty-plan/v1` comment that `boonty-ai plan publish` writes (ai-config `shared/48-plan-artifact.md`). Sessions never set the label: they publish the plan, and `boonty-ai gate check` and `gate publish` move the phase to `gates` and `ci` on their own.
++
++Out of draft, closed or merged, a PR carries no `pr:*` label. GitHub's own ready, queue and merged state says it better. Converted back to draft, the label comes back from the plan.
++
++The `pr:` namespace is separate from the `ai:*` labels. Those are issue claim steps (ai-config `shared/49-issue-claims.md`), and the batches page counts them per issue.
++
++## Wiring
++
++Copy [`templates/pr-status.yml`](../templates/pr-status.yml) into the repo's `.github/workflows/` and pin the `uses:` commit. It runs on:
++
++- `issue_comment` `created` and `edited`, only for a PR comment that starts with `<!-- boonty-plan/v1 `. The job-level `if:` skips every other comment, so they bill nothing;
++- `pull_request_target` `ready_for_review`, `converted_to_draft` and `closed`.
++
++`runs_on` picks the runner. It is a JSON string or array and defaults to `"ubuntu-latest"`. Pass `'["self-hosted","deskmini"]'` to run on the minis.
++
++A missing `pr:*` label is created on first use, so the caller does not depend on `boonty-ai issue labels --apply` having run.
++
++## Why it can be trusted
++
++- **Nothing from the event decides.** [`scripts/pr-status.sh`](../scripts/pr-status.sh) reads the PR (open or closed, draft or not) and its comments live. It takes the newest-updated plan comment whose author has admin, maintain or write permission on the repository. The permission comes from the collaborators API, never from `author_association`.
++- **Line 1 only, strictly.** [`scripts/pr-status-decide.sh`](../scripts/pr-status-decide.sh) accepts at most 256 characters in the exact marker shape. The JSON must hold a `phase` and a `status` from fixed lists. Anything else means no label.
++- **No PR code runs.** The only checkout is this repository, at the workflow's own commit, and only for the two scripts. Values reach them through `env:`.
++- **No cascade.** Labels are written with the job's `GITHUB_TOKEN`, and events from that token start no workflow. A label write never triggers `ci-request`.
++- **One run at a time per PR.** A run that waits reads the PR as it is when it starts, so the last run leaves the right label. The wanted label is added before the others are removed, so a crash leaves two labels, never zero.
++
++Tests: `test/pr-status-decide.test.sh` covers the decision table and `test/pr-status.test.sh` covers the live reads and label writes against a fake `gh`.
+diff --git a/scripts/pr-status-decide.sh b/scripts/pr-status-decide.sh
+new file mode 100755
+index 0000000..bf0871c
+--- /dev/null
++++ b/scripts/pr-status-decide.sh
+@@ -0,0 +1,50 @@
++#!/usr/bin/env bash
++# Decide the `pr:<phase>` status label of one pull request.
++#
++# Input (environment, never arguments, so no value reaches a shell parser):
++#   PR_STATE    open | closed          (a live read of the PR, never event.action)
++#   PR_DRAFT    true | false
++#   PLAN_LINE   line 1 of the PR's plan comment (the newest-updated
++#               `boonty-plan/v1` comment from a writer), or empty
++#
++# Output, for `>> "$GITHUB_OUTPUT"`:
++#   label=pr:<phase>   the one label the PR should carry, or empty for none
++#   reason=<text>      why, one line
++#
++# Only an open draft carries a label: out of draft, GitHub's own ready / queue
++# / merged state takes over. Line 1 is parsed strictly: at most 256
++# characters, the exact marker shape, a JSON object whose `phase` and
++# `status` come from fixed lists. Anything else is no label.
++set -euo pipefail
++
++state="${PR_STATE:-}"
++draft="${PR_DRAFT:-}"
++line="${PLAN_LINE:-}"
++
++out() {
++  printf 'label=%s\n' "$1"
++  printf 'reason=%s\n' "$(printf '%s' "$2" | tr -d '\r\n' | cut -c1-200)"
++  exit 0
++}
++
++[ "$state" = "open" ] || out "" "PR is ${state:-unknown} (closed or merged): no label"
++[ "$draft" = "true" ] || out "" "PR is not a draft: GitHub's ready state takes over"
++[ -n "$line" ] || out "" "no plan comment from a writer"
++[ "${#line}" -le 256 ] || out "" "plan line 1 is too long (${#line} chars)"
++
++re='^<!-- boonty-plan/v1 (\{[^}]*\}) -->$'
++[[ "$line" =~ $re ]] || out "" "plan line 1 does not have the marker shape"
++json="${BASH_REMATCH[1]}"
++
++phase="$(jq -er '.phase | select(type == "string")' <<<"$json" 2>/dev/null)" || out "" "plan line 1 is not json with a string phase"
++status="$(jq -er '.status | select(type == "string")' <<<"$json" 2>/dev/null)" || out "" "plan line 1 has no string status"
++
++case "$status" in
++  planning|in-progress|blocked|ready|merged|closed) ;;
++  *) out "" "plan status is not one of the allowed values" ;;
++esac
++case "$phase" in
++  test|implementation|gates|ci|blocked) out "pr:$phase" "draft in phase $phase" ;;
++  plan) out "" "plan phase: no label" ;;
++  *) out "" "plan phase is not one of the allowed values" ;;
++esac
+diff --git a/scripts/pr-status.sh b/scripts/pr-status.sh
+new file mode 100755
+index 0000000..d499788
+--- /dev/null
++++ b/scripts/pr-status.sh
+@@ -0,0 +1,61 @@
++#!/usr/bin/env bash
++# Set the `pr:<phase>` status label of one pull request from live reads.
++#
++#   REPO=<owner/name> PR=<number> GH_TOKEN=... scripts/pr-status.sh
++#
++# Never trusts the triggering event: it reads the PR (open/closed, draft) and
++# its comments now, takes the newest-updated `boonty-plan/v1` comment whose
++# author has admin, maintain or write permission (collaborators API, never
++# author_association), hands line 1 to scripts/pr-status-decide.sh, then makes
++# the PR carry exactly that label: it adds the wanted one first (creating it
++# when missing), then removes every other `pr:*` label, so a crash leaves two,
++# never zero. Labels written with the job's GITHUB_TOKEN start no workflow.
++set -euo pipefail
++
++here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++: "${REPO:?REPO is required}" "${PR:?PR is required}"
++[[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "::error::bad REPO" >&2; exit 2; }
++[[ "$PR" =~ ^[0-9]+$ ]] || { echo "::error::bad PR" >&2; exit 2; }
++
++pr="$(gh api "repos/$REPO/pulls/$PR")"
++state="$(jq -r '.state' <<<"$pr")"
++draft="$(jq -r '.draft' <<<"$pr")"
++
++line=""
++declare -A perm=()
++# Newest first; one JSON object per line so no body text can split a record.
++while IFS= read -r rec; do
++  [ -n "$rec" ] || continue
++  login="$(jq -r '.login' <<<"$rec")"
++  [[ "$login" =~ ^[A-Za-z0-9-]+(\[bot\])?$ ]] || continue
++  if [ -z "${perm[$login]+x}" ]; then
++    p="$(gh api "repos/$REPO/collaborators/$login/permission" --jq '.permission' 2>/dev/null || true)"
++    case "$p" in admin|maintain|write) perm[$login]=1 ;; *) perm[$login]=0 ;; esac
++  fi
++  if [ "${perm[$login]}" = 1 ]; then
++    line="$(jq -r '.line' <<<"$rec")"
++    break
++  fi
++done < <(gh api --paginate "repos/$REPO/issues/$PR/comments?per_page=100" \
++           --jq '.[] | select(.body | startswith("<!-- boonty-plan/v1 ")) | {updated_at, login: .user.login, line: (.body | split("\n")[0] | .[0:300])} | @json' \
++         | jq -sc 'sort_by(.updated_at) | reverse | .[]')
++
++decision="$(PR_STATE="$state" PR_DRAFT="$draft" PLAN_LINE="$line" "$here/pr-status-decide.sh")"
++want="$(sed -n 's/^label=//p' <<<"$decision")"
++reason="$(sed -n 's/^reason=//p' <<<"$decision")"
++echo "pr-status: #$PR state=$state draft=$draft -> '${want:-none}' ($reason)"
++
++have="$(gh api "repos/$REPO/issues/$PR/labels?per_page=100" --jq '.[].name | select(startswith("pr:"))')"
++
++enc() { printf '%s' "$1" | jq -sRr @uri; }
++if [ -n "$want" ] && ! grep -qxF -- "$want" <<<"$have"; then
++  if ! gh api "repos/$REPO/labels/$(enc "$want")" >/dev/null 2>&1; then
++    gh api -X POST "repos/$REPO/labels" -f name="$want" -f color=ededed \
++      -f description="Draft PR status, set from its boonty-plan/v1 comment" >/dev/null 2>&1 || true
++  fi
++  gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=$want" >/dev/null
++fi
++while IFS= read -r old; do
++  [ -n "$old" ] && [ "$old" != "$want" ] || continue
++  gh api -X DELETE "repos/$REPO/issues/$PR/labels/$(enc "$old")" >/dev/null 2>&1 || true
++done <<<"$have"
+diff --git a/templates/pr-status.yml b/templates/pr-status.yml
+new file mode 100644
+index 0000000..96233ca
+--- /dev/null
++++ b/templates/pr-status.yml
+@@ -0,0 +1,23 @@
++# Draft PR status label — copy into <repo>/.github/workflows/pr-status.yml.
++# See boonty-io/.github .github/workflows/pr-status.yml for what it does and
++# why it can be trusted. Replace <sha> with the boonty-io/.github main commit
++# to pin (docs/on-demand-ci.md, "Pinning").
++name: pr-status
++
++on:
++  issue_comment:
++    types: [created, edited]
++  pull_request_target:
++    types: [ready_for_review, converted_to_draft, closed]
++
++permissions: {}
++
++jobs:
++  status:
++    # Every other comment skips the job and bills nothing.
++    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request && startsWith(github.event.comment.body, '<!-- boonty-plan/v1 ')
++    uses: boonty-io/.github/.github/workflows/pr-status.yml@<sha> # main
++    permissions:
++      contents: read
++      issues: write
++      pull-requests: read
+diff --git a/test/pr-status-decide.test.sh b/test/pr-status-decide.test.sh
+new file mode 100755
+index 0000000..d882c99
+--- /dev/null
++++ b/test/pr-status-decide.test.sh
+@@ -0,0 +1,52 @@
++#!/usr/bin/env bash
++# Cases for scripts/pr-status-decide.sh. Run: test/pr-status-decide.test.sh
++# Each case: <state> <draft> <plan line 1> <expected label ('' = none)> [reason substring]
++set -euo pipefail
++here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++decide="$here/../scripts/pr-status-decide.sh"
++fail=0; n=0
++
++expect() {
++  local state="$1" draft="$2" line="$3" want="$4" why="${5:-}"
++  n=$((n + 1))
++  local got label reason
++  got="$(PR_STATE="$state" PR_DRAFT="$draft" PLAN_LINE="$line" "$decide")"
++  label="$(printf '%s\n' "$got" | sed -n 's/^label=//p')"
++  reason="$(printf '%s\n' "$got" | sed -n 's/^reason=//p')"
++  if [ "$label" != "$want" ] || { [ -n "$why" ] && [[ "$reason" != *"$why"* ]]; }; then
++    echo "✗ [$state draft=$draft '$line'] want label='$want' reason~'$why', got:"; printf '%s\n' "$got" | sed 's/^/    /'
++    fail=$((fail + 1)); return
++  fi
++  echo "✓ [$state draft=$draft] label='$label'"
++}
++
++m() { printf '<!-- boonty-plan/v1 {"phase":"%s","status":"%s"} -->' "$1" "${2:-in-progress}"; }
++
++# 1. every phase a draft can carry maps to its label
++for p in test implementation gates ci blocked; do expect open true "$(m "$p")" "pr:$p"; done
++# 2. the plan phase carries no label (no draft yet in practice; nothing to show)
++expect open true "$(m plan planning)" '' 'plan'
++# 3. out of draft, closed or merged: no label, whatever the plan says
++expect open false "$(m gates)" '' 'not a draft'
++expect closed true "$(m gates)" '' 'closed'
++expect closed false "$(m ci)" '' 'closed'
++# 4. a draft with no plan comment: no label
++expect open true '' '' 'no plan'
++# 5. line 1 is parsed strictly: an unknown phase, a bad status, extra keys' values, junk
++expect open true "$(m deploy)" '' 'phase'
++expect open true "$(m gates shipped)" '' 'status'
++expect open true '<!-- boonty-plan/v1 {"phase":"gates"} -->' '' 'status'
++expect open true '<!-- boonty-plan/v1 {not json} -->' '' 'json'
++expect open true '<!-- boonty-plan/v2 {"phase":"gates","status":"in-progress"} -->' '' 'marker'
++expect open true " $(m gates)" '' 'marker'
++expect open true "$(m gates) trailing" '' 'marker'
++# 6. size cap: a 300-char line is refused before any parsing
++long="<!-- boonty-plan/v1 {\"phase\":\"gates\",\"status\":\"in-progress\",\"x\":\"$(printf 'a%.0s' $(seq 1 260))\"} -->"
++expect open true "$long" '' 'long'
++# 7. a phase value that tries to smuggle a second key=value line is refused
++expect open true '<!-- boonty-plan/v1 {"phase":"gates\nlabel=pr:ci","status":"in-progress"} -->' '' 'phase'
++# 8. draft flag must be literally true
++expect open yes "$(m gates)" '' 'not a draft'
++
++echo "$((n - fail))/$n passed"
++[ "$fail" -eq 0 ]
+diff --git a/test/pr-status.test.sh b/test/pr-status.test.sh
+new file mode 100755
+index 0000000..ef950a8
+--- /dev/null
++++ b/test/pr-status.test.sh
+@@ -0,0 +1,100 @@
++#!/usr/bin/env bash
++# Cases for scripts/pr-status.sh against a fake `gh`. Run: test/pr-status.test.sh
++set -euo pipefail
++here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++script="$here/../scripts/pr-status.sh"
++fail=0; n=0
++work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
++mkdir -p "$work/bin"
++cat > "$work/bin/gh" <<'GH'
++#!/usr/bin/env bash
++# Fake gh: answers from $CTL, logs every call to $CTL/calls.
++echo "$*" >> "$CTL/calls"
++args=("$@"); expr=""; method=GET; route=""
++for ((i=0; i<${#args[@]}; i++)); do
++  case "${args[$i]}" in
++    --jq) expr="${args[$((i+1))]}" ;;
++    -X) method="${args[$((i+1))]}" ;;
++    repos/*) route="${args[$i]}" ;;
++  esac
++done
++out() { if [ -n "$expr" ]; then jq -r "$expr" <<<"$1"; else printf '%s\n' "$1"; fi; }
++case "$method $route" in
++  "GET repos/o/r/pulls/7") out "$(cat "$CTL/pr.json")" ;;
++  "GET repos/o/r/issues/7/comments?per_page=100") out "$(cat "$CTL/comments.json")" ;;
++  GET\ repos/o/r/collaborators/*/permission)
++    login="${route#repos/o/r/collaborators/}"; login="${login%/permission}"
++    out "{\"permission\":\"$(jq -r --arg l "$login" '.[$l] // "none"' "$CTL/perms.json")\"}" ;;
++  "GET repos/o/r/issues/7/labels?per_page=100") out "$(cat "$CTL/labels.json")" ;;
++  GET\ repos/o/r/labels/*) [ -f "$CTL/label-exists" ] && echo '{}' || { echo "HTTP 404" >&2; exit 1; } ;;
++  "POST repos/o/r/labels") echo '{}' ;;
++  "POST repos/o/r/issues/7/labels") echo '[]' ;;
++  DELETE\ repos/o/r/issues/7/labels/*) echo '[]' ;;
++  *) echo "unrouted: $method $route" >&2; exit 1 ;;
++esac
++GH
++chmod +x "$work/bin/gh"
++
++m() { printf '<!-- boonty-plan/v1 {\\"phase\\":\\"%s\\",\\"status\\":\\"in-progress\\"} -->\\n### Plan' "$1"; }
++comment() { printf '{"updated_at":"%s","user":{"login":"%s"},"body":"%s"}' "$1" "$2" "$3"; }
++
++# setup <state> <draft> <comments json array> <labels json array> [perms json]
++setup() {
++  rm -rf "$work/ctl"; mkdir "$work/ctl"
++  printf '{"state":"%s","draft":%s}' "$1" "$2" > "$work/ctl/pr.json"
++  printf '%s' "$3" > "$work/ctl/comments.json"
++  printf '%s' "$4" > "$work/ctl/labels.json"
++  printf '%s' "${5:-{\"Othella\":\"admin\",\"hugo\":\"write\",\"mallory\":\"read\"\}}" > "$work/ctl/perms.json"
++}
++run() { CTL="$work/ctl" PATH="$work/bin:$PATH" REPO=o/r PR=7 GH_TOKEN=x "$script" > "$work/ctl/out" 2>&1; }
++check() {
++  local name="$1" ok="$2"; n=$((n + 1))
++  if [ "$ok" = 1 ]; then echo "✓ $name"; else echo "✗ $name"; sed 's/^/    calls: /' "$work/ctl/calls"; sed 's/^/    out: /' "$work/ctl/out"; fail=$((fail + 1)); fi
++}
++called() { grep -qF -- "$1" "$work/ctl/calls"; }
++
++# 1. a draft with a writer's plan in gates gets pr:gates, created when missing
++setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m gates)")]" '[]'
++run; check "draft + writer plan -> adds pr:gates" "$(called 'POST repos/o/r/issues/7/labels -f labels[]=pr:gates' && called 'POST repos/o/r/labels' && echo 1 || echo 0)"
++
++# 2. the newest writer comment wins over an older one
++setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m test)"),$(comment 2026-11-17T12:00:00Z hugo "$(m ci)")]" '[]'
++run; check "newest writer wins" "$(called 'labels[]=pr:ci' && ! called 'labels[]=pr:test' && echo 1 || echo 0)"
++
++# 3. a newer comment from a non-writer is ignored
++setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m test)"),$(comment 2026-11-17T12:00:00Z mallory "$(m ci)")]" '[]'
++run; check "non-writer ignored" "$(called 'labels[]=pr:test' && ! called 'labels[]=pr:ci' && echo 1 || echo 0)"
++
++# 4. moving phase: the new label is added, then the old one removed
++setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m ci)")]" '[{"name":"pr:gates"},{"name":"bug"}]'
++touch "$work/ctl/label-exists"
++run; check "phase change swaps labels, keeps others" "$(called 'labels[]=pr:ci' && called 'DELETE repos/o/r/issues/7/labels/pr%3Agates' && ! called 'labels/bug' && ! called 'POST repos/o/r/labels -f' && echo 1 || echo 0)"
++add=$(grep -n 'labels\[\]=pr:ci' "$work/ctl/calls" | cut -d: -f1); del=$(grep -n 'DELETE' "$work/ctl/calls" | cut -d: -f1)
++check "add before remove" "$([ "$add" -lt "$del" ] && echo 1 || echo 0)"
++
++# 5. out of draft: every pr:* label goes, nothing is added
++setup open false "[$(comment 2026-11-17T10:00:00Z Othella "$(m gates)")]" '[{"name":"pr:gates"}]'
++run; check "ready PR loses its label" "$(called 'DELETE repos/o/r/issues/7/labels/pr%3Agates' && ! called '-X POST' && echo 1 || echo 0)"
++
++# 6. closed: same
++setup closed true "[$(comment 2026-11-17T10:00:00Z Othella "$(m gates)")]" '[{"name":"pr:ci"}]'
++run; check "closed PR loses its label" "$(called 'labels/pr%3Aci' && ! called '-X POST' && echo 1 || echo 0)"
++
++# 7. already right: no write at all
++setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m gates)")]" '[{"name":"pr:gates"}]'
++run; check "no-op when already labelled" "$(! called '-X POST' && ! called '-X DELETE' && echo 1 || echo 0)"
++
++# 8. a draft with no plan comment loses a stale label
++setup open true '[]' '[{"name":"pr:test"}]'
++run; check "no plan -> no label" "$(called 'labels/pr%3Atest' && ! called '-X POST' && echo 1 || echo 0)"
++
++# 9. the decision reads line 1 only: a marker on line 2 of a writer's comment is not a plan
++setup open true "[$(comment 2026-11-17T10:00:00Z Othella "hello\\n$(m gates)")]" '[]'
++run; check "marker not on line 1 is ignored" "$(! called '-X POST' && echo 1 || echo 0)"
++
++# 10. a login that is not a GitHub login shape is never looked up
++setup open true "[$(comment 2026-11-17T10:00:00Z 'x;rm' "$(m gates)")]" '[]'
++run; check "odd login skipped, no permission call" "$(! called 'collaborators/x;rm' && ! called '-X POST' && echo 1 || echo 0)"
++
++echo "$((n - fail))/$n passed"
++[ "$fail" -eq 0 ]

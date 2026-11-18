@@ -32,7 +32,7 @@ expect closed true "$(m gates)" '' 'closed'
 expect closed false "$(m ci)" '' 'closed'
 # 4. a draft with no plan comment: no label
 expect open true '' '' 'no plan'
-# 5. line 1 is parsed strictly: an unknown phase, a bad status, extra keys' values, junk
+# 5. line 1 is parsed strictly: an unknown phase, a bad or missing status, non-JSON, a wrong marker
 expect open true "$(m deploy)" '' 'phase'
 expect open true "$(m gates shipped)" '' 'status'
 expect open true '<!-- boonty-plan/v1 {"phase":"gates"} -->' '' 'status'

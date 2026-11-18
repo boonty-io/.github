@@ -21,7 +21,7 @@ done
 out() { if [ -n "$expr" ]; then jq -r "$expr" <<<"$1"; else printf '%s\n' "$1"; fi; }
 case "$method $route" in
   "GET repos/o/r/pulls/7") out "$(cat "$CTL/pr.json")" ;;
-  "GET repos/o/r/issues/7/comments?per_page=100") out "$(cat "$CTL/comments.json")" ;;
+  "GET repos/o/r/issues/7/comments?per_page=100") [ -f "$CTL/comments-fail" ] && { echo "HTTP 502" >&2; exit 1; }; out "$(cat "$CTL/comments.json")" ;;
   GET\ repos/o/r/collaborators/*/permission)
     login="${route#repos/o/r/collaborators/}"; login="${login%/permission}"
     out "{\"permission\":\"$(jq -r --arg l "$login" '.[$l] // "none"' "$CTL/perms.json")\"}" ;;
@@ -29,7 +29,7 @@ case "$method $route" in
   GET\ repos/o/r/labels/*) [ -f "$CTL/label-exists" ] && echo '{}' || { echo "HTTP 404" >&2; exit 1; } ;;
   "POST repos/o/r/labels") echo '{}' ;;
   "POST repos/o/r/issues/7/labels") echo '[]' ;;
-  DELETE\ repos/o/r/issues/7/labels/*) echo '[]' ;;
+  DELETE\ repos/o/r/issues/7/labels/*) [ -f "$CTL/delete-fail" ] && { echo "HTTP 502" >&2; exit 1; }; echo '[]' ;;
   *) echo "unrouted: $method $route" >&2; exit 1 ;;
 esac
 GH
@@ -46,7 +46,12 @@ setup() {
   printf '%s' "$4" > "$work/ctl/labels.json"
   printf '%s' "${5:-{\"Othella\":\"admin\",\"hugo\":\"write\",\"mallory\":\"read\"\}}" > "$work/ctl/perms.json"
 }
-run() { CTL="$work/ctl" PATH="$work/bin:$PATH" REPO=o/r PR=7 GH_TOKEN=x "$script" > "$work/ctl/out" 2>&1; }
+run() {
+  local rc=0
+  CTL="$work/ctl" PATH="$work/bin:$PATH" REPO=o/r PR=7 GH_TOKEN=x "$script" > "$work/ctl/out" 2>&1 || rc=$?
+  echo "$rc" > "$work/ctl/rc"
+}
+rc() { cat "$work/ctl/rc"; }
 check() {
   local name="$1" ok="$2"; n=$((n + 1))
   if [ "$ok" = 1 ]; then echo "✓ $name"; else echo "✗ $name"; sed 's/^/    calls: /' "$work/ctl/calls"; sed 's/^/    out: /' "$work/ctl/out"; fail=$((fail + 1)); fi
@@ -95,6 +100,20 @@ run; check "marker not on line 1 is ignored" "$(! called '-X POST' && echo 1 || 
 # 10. a login that is not a GitHub login shape is never looked up
 setup open true "[$(comment 2026-11-17T10:00:00Z 'x;rm' "$(m gates)")]" '[]'
 run; check "odd login skipped, no permission call" "$(! called 'collaborators/x;rm' && ! called '-X POST' && echo 1 || echo 0)"
+
+# 11. a failed comments fetch fails the run and touches no label
+setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m gates)")]" '[{"name":"pr:gates"}]'
+touch "$work/ctl/comments-fail"
+run; check "comments fetch failure: exit non-zero, no label write" "$([ "$(rc)" != 0 ] && ! called '-X DELETE' && ! called '-X POST' && echo 1 || echo 0)"
+
+# 12. a failed label removal fails the run (two labels must not pass green)
+setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m ci)")]" '[{"name":"pr:gates"}]'
+touch "$work/ctl/label-exists" "$work/ctl/delete-fail"
+run; check "failed removal: exit non-zero with a warning" "$([ "$(rc)" != 0 ] && grep -q '^::warning' "$work/ctl/out" && echo 1 || echo 0)"
+
+# 13. a CRLF line 1 still reads as the plan
+setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m gates | sed 's/-->/-->\\r/')")]" '[]'
+run; check "CRLF line 1 accepted" "$(called 'labels[]=pr:gates' && echo 1 || echo 0)"
 
 echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]

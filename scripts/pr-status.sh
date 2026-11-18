@@ -21,6 +21,12 @@ pr="$(gh api "repos/$REPO/pulls/$PR")"
 state="$(jq -r '.state' <<<"$pr")"
 draft="$(jq -r '.draft' <<<"$pr")"
 
+# Fetch first, so a failed read stops the run (set -e) instead of reading
+# as "no plan comment" and stripping a correct label.
+comments="$(gh api --paginate "repos/$REPO/issues/$PR/comments?per_page=100" \
+  --jq '.[] | select(.body | startswith("<!-- boonty-plan/v1 ")) | {updated_at, login: .user.login, line: (.body | split("\n")[0] | rtrimstr("\r") | .[0:300])} | @json')"
+ordered="$(jq -sc 'sort_by(.updated_at) | reverse | .[]' <<<"$comments")"
+
 line=""
 declare -A perm=()
 # Newest first; one JSON object per line so no body text can split a record.
@@ -36,9 +42,7 @@ while IFS= read -r rec; do
     line="$(jq -r '.line' <<<"$rec")"
     break
   fi
-done < <(gh api --paginate "repos/$REPO/issues/$PR/comments?per_page=100" \
-           --jq '.[] | select(.body | startswith("<!-- boonty-plan/v1 ")) | {updated_at, login: .user.login, line: (.body | split("\n")[0] | .[0:300])} | @json' \
-         | jq -sc 'sort_by(.updated_at) | reverse | .[]')
+done <<<"$ordered"
 
 decision="$(PR_STATE="$state" PR_DRAFT="$draft" PLAN_LINE="$line" "$here/pr-status-decide.sh")"
 want="$(sed -n 's/^label=//p' <<<"$decision")"
@@ -55,7 +59,13 @@ if [ -n "$want" ] && ! grep -qxF -- "$want" <<<"$have"; then
   fi
   gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=$want" >/dev/null
 fi
+failed=0
 while IFS= read -r old; do
   [ -n "$old" ] && [ "$old" != "$want" ] || continue
-  gh api -X DELETE "repos/$REPO/issues/$PR/labels/$(enc "$old")" >/dev/null 2>&1 || true
+  if ! gh api -X DELETE "repos/$REPO/issues/$PR/labels/$(enc "$old")" >/dev/null 2>&1; then
+    echo "::warning title=pr-status::could not remove '$old' from #$PR"
+    failed=1
+  fi
 done <<<"$have"
+# A label left behind is a wrong state: the run says so instead of passing.
+exit "$failed"

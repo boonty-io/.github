@@ -1,0 +1,18 @@
+{
+  "sha": "fc9b45e4561fe4b7644605fd98cd7a01a4815979",
+  "gate": "claim-verifier",
+  "verdict": "pass",
+  "diff_hash": "38ed19e3833b66a8a26dd6ffda994aee8f8fe1a6",
+  "base": "origin/main",
+  "merge_base": "337524bec22f7eabe889856bc423c39adfca991b",
+  "timestamp": "2026-11-18T01:03:14.860Z",
+  "summary": "Checked each claim against code and ran the two new tests. test/pr-status-decide.test.sh printed 20/20 and test/pr-status.test.sh printed 11/11. Both match the denominators in the mutation table (decide /20, pr-status /11). Confirmed in the diff: add-before-remove ordering (script, docs, and the \"add before remove\" test). Only newest-updated writer plan comments count. Permission comes from the collaborators API, and non-GitHub-shaped logins are never looked up (test 10). The 256-char cap, strict marker shape, phase and status allow-lists are in pr-status-decide.sh. The caller `if:` precedence is correct (`a || b && c`). The only checkout is this repository at job.workflow_sha, and values reach the scripts through env. templates/pr-status.yml cites docs/on-demand-ci.md \"Pinning\", which exists (line 231). The PR body has no base-relative facts. I did not re-run the mutation arms. The \"every existing test passes\" claim is outside what I reran. The gate-published phase movement in docs/pr-status.md, and the claim that GITHUB_TOKEN events start no workflow, rest on external behaviour I did not check.",
+  "findings": [],
+  "findings_dropped": 0,
+  "summary_truncated_chars": 0,
+  "source": "report",
+  "escalated": false,
+  "contract_violated": false,
+  "model": "sonnet",
+  "routed_model": "haiku"
+}

@@ -1,0 +1,24 @@
+{
+  "sha": "fc9b45e4561fe4b7644605fd98cd7a01a4815979",
+  "gate": "architecture-reviewer",
+  "verdict": "pass",
+  "diff_hash": "38ed19e3833b66a8a26dd6ffda994aee8f8fe1a6",
+  "base": "origin/main",
+  "merge_base": "337524bec22f7eabe889856bc423c39adfca991b",
+  "timestamp": "2026-11-18T01:03:02.407Z",
+  "summary": "Placement and layering are sound. The reusable workflow `.github/workflows/pr-status.yml` holds the plumbing. The live reads and writes sit in `scripts/pr-status.sh`, and the pure decision is in `scripts/pr-status-decide.sh`, which takes input only through env vars and has no I/O. The caller template is separate. Dependencies point one way: workflow, then I/O script, then decision script. Each test covers one layer, and the I/O test runs against a fake `gh`. There is no premature abstraction. The job checks out only this repo's two scripts at `job.workflow_sha`, never PR code, with minimal job permissions. Permission comes from the collaborators API, not `author_association`. Concurrency is per PR. Label writes use `GITHUB_TOKEN`, so they start no workflow. The only remark is the bash 4 dependency in the nit.",
+  "findings": [
+    {
+      "file": "scripts/pr-status.sh",
+      "line": 211,
+      "severity": "nit",
+      "note": "`declare -A` needs bash 4+, so the script fails on a macOS runner (stock bash 3.2); the docs should say the minis must be Linux, which `deskmini` (Arch) is."
+    }
+  ],
+  "findings_dropped": 0,
+  "summary_truncated_chars": 0,
+  "source": "report",
+  "escalated": false,
+  "contract_violated": false,
+  "model": "sonnet"
+}

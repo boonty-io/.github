@@ -1,0 +1,6 @@
+$ for t in test/*.test.sh; do "$t" >/dev/null || { echo "FAIL $t"; exit 1; }; done; python3 test/on-demand-guard.test.py
+.............................................
+----------------------------------------------------------------------
+Ran 45 tests in 5.246s
+
+OK

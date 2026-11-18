@@ -1,0 +1,11 @@
+$ for t in test/*.test.sh; do "$t" >/dev/null || { echo "FAIL $t"; exit 1; }; done; python3 test/on-demand-guard.test.py && python3 test/ci-request-prefilter.test.py
+.............................................
+----------------------------------------------------------------------
+Ran 45 tests in 2.594s
+
+OK
+......
+----------------------------------------------------------------------
+Ran 6 tests in 1.106s
+
+OK

@@ -1,0 +1,17 @@
+{
+  "sha": "fc9b45e4561fe4b7644605fd98cd7a01a4815979",
+  "gate": "security",
+  "verdict": "pass",
+  "diff_hash": "38ed19e3833b66a8a26dd6ffda994aee8f8fe1a6",
+  "base": "origin/main",
+  "merge_base": "337524bec22f7eabe889856bc423c39adfca991b",
+  "timestamp": "2026-11-18T01:03:14.124Z",
+  "summary": "No blocking security issues. The workflow trusts nothing from the event. The script reads the PR and its comments live, and counts a plan comment only from an author with admin, maintain or write permission (collaborators API, not author_association). Logins are checked against a strict regex before they reach a URL. Line 1 is capped at 256 characters, must match an exact marker regex, and must carry a phase and status from fixed lists. Only fixed strings reach the `label=` and `reason=` outputs, so a crafted comment can't inject a key (the smuggle case is tested). `pull_request_target` runs no PR code. The only checkout is this repo, with an SHA-pinned action and `persist-credentials: false`. Permissions are `{}` at the top and least-privilege on the job. Event values reach the scripts through `env:` only, never `${{ }}` in `run:`. `GITHUB_TOKEN` label writes start no workflows, so there is no cascade. The caller template's `if:` precedence is correct. Residual risk: any writer can set the label, which is by design. The script also removes any `pr:*` label, including ones not made by this tool, which is harmless.",
+  "findings": [],
+  "findings_dropped": 0,
+  "summary_truncated_chars": 0,
+  "source": "report",
+  "escalated": false,
+  "contract_violated": false,
+  "model": "sonnet"
+}
