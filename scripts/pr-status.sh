@@ -29,13 +29,23 @@ ordered="$(jq -sc 'sort_by(.updated_at) | reverse | .[]' <<<"$comments")"
 
 line=""
 declare -A perm=()
+errfile="$(mktemp)"; trap 'rm -f "$errfile"' EXIT
 # Newest first; one JSON object per line so no body text can split a record.
 while IFS= read -r rec; do
   [ -n "$rec" ] || continue
   login="$(jq -r '.login' <<<"$rec")"
   [[ "$login" =~ ^[A-Za-z0-9-]+(\[bot\])?$ ]] || continue
   if [ -z "${perm[$login]+x}" ]; then
-    p="$(gh api "repos/$REPO/collaborators/$login/permission" --jq '.permission' 2>/dev/null || true)"
+    # A 404 means "not a collaborator", a plain non-writer. Any other failure
+    # stops the run: read as "not a writer", it would strip a correct label.
+    if ! p="$(gh api "repos/$REPO/collaborators/$login/permission" --jq '.permission' 2>"$errfile")"; then
+      if grep -qE 'HTTP 404|Not Found' "$errfile"; then
+        p=""
+      else
+        echo "::error title=pr-status::could not read $login's permission: $(head -c 200 "$errfile" | tr -d '\r\n')"
+        exit 1
+      fi
+    fi
     case "$p" in admin|maintain|write) perm[$login]=1 ;; *) perm[$login]=0 ;; esac
   fi
   if [ "${perm[$login]}" = 1 ]; then
@@ -55,7 +65,8 @@ enc() { printf '%s' "$1" | jq -sRr @uri; }
 if [ -n "$want" ] && ! grep -qxF -- "$want" <<<"$have"; then
   if ! gh api "repos/$REPO/labels/$(enc "$want")" >/dev/null 2>&1; then
     gh api -X POST "repos/$REPO/labels" -f name="$want" -f color=ededed \
-      -f description="Draft PR status, set from its boonty-plan/v1 comment" >/dev/null 2>&1 || true
+      -f description="Draft PR status, set from its boonty-plan/v1 comment" >/dev/null 2>&1 \
+      || echo "::warning title=pr-status::could not create label '$want' (it may exist already); adding it next"
   fi
   gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=$want" >/dev/null
 fi

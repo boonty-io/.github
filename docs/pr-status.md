@@ -22,6 +22,7 @@ A missing `pr:*` label is created on first use, so the caller does not depend on
 - **Nothing from the event decides.** [`scripts/pr-status.sh`](../scripts/pr-status.sh) reads the PR (open or closed, draft or not) and its comments live. It takes the newest-updated plan comment whose author has admin, maintain or write permission on the repository. The permission comes from the collaborators API, never from `author_association`.
 - **Line 1 only, strictly.** [`scripts/pr-status-decide.sh`](../scripts/pr-status-decide.sh) accepts at most 256 characters in the exact marker shape. The JSON must hold a `phase` and a `status` from fixed lists. Anything else means no label.
 - **No PR code runs.** The only checkout is this repository, at the workflow's own commit, and only for the two scripts. Values reach them through `env:`.
+- **Permissions.** The job needs `issues: write` (to create a missing `pr:*` label) and `pull-requests: write`: adding a label to a PR with `issues: write` alone is refused with HTTP 403. A caller grants both, since a reusable workflow gets no more than its caller grants.
 - **No cascade.** Labels are written with the job's `GITHUB_TOKEN`, and events from that token start no workflow. A label write never triggers `ci-request`.
 - **One run at a time per PR.** A run that waits reads the PR as it is when it starts, so the last run leaves the right label. The wanted label is added before the others are removed, so a crash leaves two labels, never zero.
 

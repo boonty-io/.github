@@ -24,6 +24,8 @@ case "$method $route" in
   "GET repos/o/r/issues/7/comments?per_page=100") [ -f "$CTL/comments-fail" ] && { echo "HTTP 502" >&2; exit 1; }; out "$(cat "$CTL/comments.json")" ;;
   GET\ repos/o/r/collaborators/*/permission)
     login="${route#repos/o/r/collaborators/}"; login="${login%/permission}"
+    [ -f "$CTL/perm-fail" ] && { echo "gh: HTTP 502 (Bad Gateway)" >&2; exit 1; }
+    [ -f "$CTL/perm-404-$login" ] && { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
     out "{\"permission\":\"$(jq -r --arg l "$login" '.[$l] // "none"' "$CTL/perms.json")\"}" ;;
   "GET repos/o/r/issues/7/labels?per_page=100") out "$(cat "$CTL/labels.json")" ;;
   GET\ repos/o/r/labels/*) [ -f "$CTL/label-exists" ] && echo '{}' || { echo "HTTP 404" >&2; exit 1; } ;;
@@ -114,6 +116,20 @@ run; check "failed removal: exit non-zero with a warning" "$([ "$(rc)" != 0 ] &&
 # 13. a CRLF line 1 still reads as the plan
 setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m gates | sed 's/-->/-->\\r/')")]" '[]'
 run; check "CRLF line 1 accepted" "$(called 'labels[]=pr:gates' && echo 1 || echo 0)"
+
+# 14. a failed permission lookup fails the run and writes no label
+setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m gates)")]" '[{"name":"pr:gates"}]'
+touch "$work/ctl/perm-fail"
+run; check "permission lookup failure: exit non-zero, no label write" "$([ "$(rc)" != 0 ] && ! called '-X DELETE' && ! called '-X POST' && echo 1 || echo 0)"
+
+# 15. a 404 (not a collaborator) is a plain non-writer, not an error
+setup open true "[$(comment 2026-11-17T10:00:00Z Othella "$(m test)"),$(comment 2026-11-17T12:00:00Z outsider "$(m ci)")]" '[]'
+touch "$work/ctl/perm-404-outsider"
+run; check "404 lookup reads as non-writer" "$([ "$(rc)" = 0 ] && called 'labels[]=pr:test' && ! called 'labels[]=pr:ci' && echo 1 || echo 0)"
+
+# 16. the job can write labels on a PR: issues: write alone is refused (HTTP 403)
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+check "workflow and template grant pull-requests: write" "$(grep -qE '^      pull-requests: write' "$root/.github/workflows/pr-status.yml" && grep -qE '^      pull-requests: write' "$root/templates/pr-status.yml" && echo 1 || echo 0)"
 
 echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]
