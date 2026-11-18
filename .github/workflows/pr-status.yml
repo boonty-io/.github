@@ -50,7 +50,7 @@ jobs:
     permissions:
       contents: read       # collaborators/<login>/permission
       issues: write        # labels on the PR, and creating a missing pr:* label
-      pull-requests: read  # the live PR read
+      pull-requests: write # the live PR read, and adding or removing a label on a PR (issues: write alone gets HTTP 403)
     steps:
       - name: Check out the scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
