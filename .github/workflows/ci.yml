@@ -69,6 +69,8 @@ jobs:
       - run: test/install-release-tool.test.sh
       - run: test/ci-request-dispatch.test.sh
       - run: test/ci-hint-post.test.sh
+      - run: test/pr-status-decide.test.sh
+      - run: test/pr-status.test.sh
       - run: test/seed-drift-check.test.sh
 
   on-demand-guard:

@@ -1,0 +1,71 @@
+# pr-status — keep a draft PR's one `pr:<phase>` label in step with its plan.
+#
+# Reusable (`workflow_call`). A consumer calls it from a short
+# `.github/workflows/pr-status.yml` (templates/pr-status.yml):
+#
+#   issue_comment / created, edited     only a PR comment whose body starts
+#                                        with `<!-- boonty-plan/v1 ` (job if:)
+#   pull_request_target / ready_for_review, converted_to_draft, closed
+#
+# Only an open draft carries a label, exactly one of pr:test,
+# pr:implementation, pr:gates, pr:ci, pr:blocked, taken from the phase on
+# line 1 of the PR's plan comment (ai-config shared/48). Out of draft, closed
+# or merged, every pr:* label goes: GitHub's own ready / queue / merged state
+# takes over. Converted back to draft, the label comes back from the plan.
+#
+# Trust. Nothing from the event decides: scripts/pr-status.sh reads the PR
+# and its comments live, takes the newest-updated plan comment whose author
+# has admin, maintain or write permission (collaborators API, never
+# author_association), and scripts/pr-status-decide.sh parses its line 1
+# only: at most 256 characters, the exact marker shape, allow-listed phase
+# and status. No PR code is checked out: the only checkout is this
+# repository, at this workflow's own commit, for the two scripts. Values
+# reach the scripts through `env:`, never through `${{ }}` in a `run:`.
+#
+# Labels are written with the job's GITHUB_TOKEN, whose events start no
+# workflow, so a label write never triggers ci-request or anything else.
+# One run at a time per PR; a run that waits reads the PR as it is when it
+# starts, so the last one leaves the right label.
+name: pr-status
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: Runner label (a JSON string or array), e.g. '"ubuntu-latest"' or '["self-hosted","deskmini"]'.
+        required: false
+        default: '"ubuntu-latest"'
+        type: string
+
+permissions: {}
+
+jobs:
+  label:
+    name: pr-status
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 3
+    concurrency:
+      group: pr-status-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read       # collaborators/<login>/permission
+      issues: write        # labels on the PR, and creating a missing pr:* label
+      pull-requests: read  # the live PR read
+    steps:
+      - name: Check out the scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: boonty-io/.github
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout: |
+            scripts/pr-status.sh
+            scripts/pr-status-decide.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Set the status label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: scripts/pr-status.sh
