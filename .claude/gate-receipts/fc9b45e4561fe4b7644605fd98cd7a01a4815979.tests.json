@@ -1,8 +1,0 @@
-{
-  "sha": "fc9b45e4561fe4b7644605fd98cd7a01a4815979",
-  "passed": true,
-  "command": "for t in test/*.test.sh; do \"$t\" >/dev/null || { echo \"FAIL $t\"; exit 1; }; done; python3 test/on-demand-guard.test.py && python3 test/ci-request-prefilter.test.py",
-  "exit_code": 0,
-  "timestamp": "2026-11-18T01:02:12.347Z",
-  "evidence": "local"
-}
