@@ -118,7 +118,7 @@ The guard accepts exactly `[labeled]` (label and `/ci` only: no auto-run on
 ready, no hint) or the template's five-type set, and with the latter requires one
 `ci-hint.yml` job with `contexts`, `statuses: write`, `contents: read` and
 `pull-requests: read`. If it sets a workflow `concurrency`, the group must
-split on `github.event.action` into `'hint'` and `'request'`, and
+split on `github.event.action` into `'hint'` and `'request'` (the template's prefilter adds a third, `'noop'`), and
 `cancel-in-progress` must not be a bare `true`. A consumer still on
 `[labeled]` keeps working unchanged.
 

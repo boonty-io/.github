@@ -13,8 +13,10 @@ on:
 permissions: {}
 
 # A group keeps one pending run, so three slots:
-# - 'hint': a draft opened, reopened or pushed to. Hints cancel each other and
-#   never touch a request (otherwise a push behind a queued `ci:run` replaces it).
+# - 'hint': every synchronize and reopened, and an opened draft. They cancel
+#   each other, so a later push cancels an earlier one; on a ready PR that run is
+#   a request too, and the new head is requested again. They never touch the
+#   'request' slot (otherwise a push behind a queued `ci:run` replaces it).
 # - 'noop': the jobs' `if:` below skips the run (another label, a comment that
 #   is not `/ci`). A skipped run in the request slot would replace a queued request.
 # - 'request': everything else.

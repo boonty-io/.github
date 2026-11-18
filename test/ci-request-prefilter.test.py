@@ -177,6 +177,10 @@ class Prefilter(unittest.TestCase):
 
     def test_hints_still_split_from_requests(self):
         self.assertEqual(evaluate(self.group_tail, self.ctx("synchronize.json")), "hint")
+        # A ready PR's new head is a request that shares the hint slot: a later
+        # push cancels it, and that push is itself requested.
+        self.assertEqual(decide("synchronize-ready.json").get("go"), "true")
+        self.assertEqual(evaluate(self.group_tail, self.ctx("synchronize-ready.json")), "hint")
         self.assertEqual(evaluate(self.group_tail, self.ctx("labeled-ci-run.json")), "request")
         self.assertEqual(evaluate(self.group_tail, self.ctx("comment-ci-member.json")), "request")
 
