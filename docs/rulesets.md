@@ -26,12 +26,14 @@ A branch's merge queue is a `merge_queue` rule in the same file, with
 `strict_required_status_checks_policy: false` beside it
 (`docs/merge-queue.md`). It is applied and compared like any other rule.
 
-Organization rulesets and classic branch protection (still used by
-`pos-app-android` `main`) are outside this mechanism. `pos-app-android`
-`develop` moves from classic protection to `rulesets/repos/pos-app-android.json`.
-Once that ruleset has applied and a first queue entry has landed, an admin
-removes `develop`'s classic protection: until then, its strict setting still
-applies.
+Organization rulesets and classic branch protection are outside this
+mechanism. To move a branch from classic protection to a ruleset, apply the
+ruleset first, then have an admin remove the classic protection
+(`gh api -X DELETE repos/<owner>/<repo>/branches/<branch>/protection`). Until
+the removal, a strict classic setting still applies next to the merge queue.
+Removing it before the apply leaves the branch unprotected in between.
+`pos-app-android` `develop` and `main` moved this way to
+`rulesets/repos/pos-app-android.json`.
 
 `scripts/rulesets.sh` is tested by `test/rulesets.test.sh` against a stub
 `gh`. A failed read of a repository's rulesets stops the run before any write
