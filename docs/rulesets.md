@@ -28,11 +28,13 @@ A branch's merge queue is a `merge_queue` rule in the same file, with
 
 Organization rulesets and classic branch protection are outside this
 mechanism. To move a branch from classic protection to a ruleset, apply the
-ruleset first, then have an admin remove the classic protection
+ruleset first and check it is live
+(`gh api repos/<owner>/<repo>/rules/branches/<branch>`), then have an admin
+remove the classic protection
 (`gh api -X DELETE repos/<owner>/<repo>/branches/<branch>/protection`). Until
 the removal, a strict classic setting still applies next to the merge queue.
 Removing it before the apply leaves the branch unprotected in between.
-`pos-app-android` `develop` and `main` moved this way to
+`pos-app-android` `develop` and `main` have moved to
 `rulesets/repos/pos-app-android.json`.
 
 `scripts/rulesets.sh` is tested by `test/rulesets.test.sh` against a stub
