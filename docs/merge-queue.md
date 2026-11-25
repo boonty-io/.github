@@ -49,7 +49,32 @@ Two ways to land outside this flow remain, and neither is closed by the queue:
   ```
 
   Use the bypass only for ai-config bumps, which need no CI or deployment
-  (Amélie, 2026-11-16), and for the rollback below, on the owner's go.
+  (Amélie, 2026-11-16), for delivery PRs (the item below), and for the
+  rollback below, on the owner's go.
+  - A delivery PR (`staging`→`main`, or `develop`→`main` in `pos-app-android`)
+    merges by the bypass when `main` carries no file change of its own beyond
+    the merge base with the source branch (Amélie, 2026-11-25). The commits
+    `main` has and the source lacks, earlier delivery merges and hotfixes
+    already merged back, then add no file, so the merge produces the source
+    tip's files. Those files were checked by the source branch's queue, or
+    reached it by a bypass under the rules above. A `main` queue entry would
+    re-run the same CI on the same files. The bypass also skips everything else
+    `main` requires, its pull-request rule included (1 approval in
+    `pos-app-android`, 0 elsewhere), so this rule covers delivery PRs only.
+
+    Run the check immediately before the merge, since a later push to `main` or
+    to the source voids it. `files=0` is the condition. `ahead_by` counts every
+    commit `main` has and the source lacks, is informational, and is never 0
+    after a first delivery:
+
+    ```bash
+    gh api repos/boonty-io/<repo>/compare/<source>...main --jq '"ahead_by=\(.ahead_by) files=\(.files|length)"'
+    ```
+
+    If `files` is not 0, `main` carries a change the source lacks, such as a
+    hotfix not merged back. Merge `main` back into the source first, or put the
+    delivery through the `main` queue. The `main` queue and its pull-request
+    rule stay for any other PR opened against `main`.
 - A bot, script or session that calls `gh pr merge` itself no longer merges
   directly on a queue branch: GitHub's queue decides the merge, so such a call is
   expected to enqueue the PR. The callers known today:
