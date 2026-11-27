@@ -6,8 +6,8 @@
 # `pull_request` opened, synchronize and reopened. It is not a required
 # context: the rule (ai-config shared/40) is that the human is the author and
 # AI help is an `Assisted-by: Claude Code` trailer, and this check is the
-# backstop for commits made outside Claude Code, whose own hook already
-# refuses them.
+# backstop for commits made outside Claude Code. Claude Code's own hook
+# refuses them once boonty-io/ai-config#1749 ships.
 #
 # One matcher. scripts/coauthor-check.sh holds no pattern: it runs the
 # consumer's synced `.claude/hooks/check-commit-msg-coauthor.sh` (ai-config's
