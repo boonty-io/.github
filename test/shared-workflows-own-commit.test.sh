@@ -33,6 +33,18 @@ for f in $wfs; do
       index($0, "job.workflow_sha == " q q) { gd=1 }
       END { if (co && !gd) bad=1; exit bad }' "$f"; then ok "$wf guards every job that checks out boonty-io/.github"
   else ko "$wf has a job that checks out boonty-io/.github without the guard"; fi
+  # each guard covers its checkout: the guard's `if:` contains the checkout's
+  # own condition, so the guard runs whenever the checkout would
+  if python3 - "$f" <<'PY'
+import re, sys
+steps = re.split(r"\n      - name:", open(sys.argv[1]).read())
+norm = lambda c: re.sub(r"\s+", " ", c.replace("${{", "").replace("}}", "")).strip()
+cond = lambda st: (m := re.search(r"\n        if: (.*)", st)) and norm(m.group(1)) or ""
+guards = [cond(st) for st in steps if "job.workflow_sha == ''" in cond(st)]
+outs = [cond(st) for st in steps if re.search(r"repository: .?boonty-io/\.github.?\s*\n", st)]
+sys.exit(0 if outs and all(any(c in g for g in guards) for c in outs) else 1)
+PY
+  then ok "$wf guards run whenever their checkout runs"; else ko "$wf has a checkout whose condition no guard covers"; fi
   # no empty `inputs:` key left under workflow_call
   if grep -A1 -E '^    inputs:\s*$' "$f" | grep -qvE '^(    inputs:\s*|      .*|--)$'; then ko "$wf leaves an empty inputs: key"; else ok "$wf has no empty inputs: key"; fi
 done
