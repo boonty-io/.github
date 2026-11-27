@@ -1,0 +1,64 @@
+# coauthor-check — fail a pull request whose commits attribute authorship to
+# an AI assistant with a Co-Authored-By trailer.
+#
+# Reusable (`workflow_call`). A consumer calls it from a short
+# `.github/workflows/coauthor-check.yml` (templates/coauthor-check.yml) on
+# `pull_request` opened, synchronize and reopened. It is not a required
+# context: the rule (ai-config shared/40) is that the human is the author and
+# AI help is an `Assisted-by: Claude Code` trailer, and this check is the
+# backstop for commits made outside Claude Code, whose own hook already
+# refuses them.
+#
+# One matcher. scripts/coauthor-check.sh holds no pattern: it runs the
+# consumer's synced `.claude/hooks/check-commit-msg-coauthor.sh` (ai-config's
+# matcher) as it is on the PR's BASE commit, over every commit message in
+# base..head. A base without that file is skipped with a notice.
+#
+# Trust. `pull_request`, so a fork PR gets a read-only token and no secrets.
+# The caller's checkout is history only: nothing from it is executed except
+# the base's matcher, read with `git show`, never the head's copy. Values
+# reach the script through `env:`, never through `${{ }}` in a `run:`.
+name: coauthor-check
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: Runner label (a JSON string or array), e.g. '"ubuntu-latest"' or '["self-hosted","deskmini"]'.
+        required: false
+        default: '"ubuntu-latest"'
+        type: string
+
+permissions: {}
+
+jobs:
+  scan:
+    name: coauthor-check
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the PR history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: boonty-io/.github
+          ref: ${{ job.workflow_sha }}
+          path: .boonty-github
+          sparse-checkout: |
+            scripts/coauthor-check.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Scan the commit messages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .boonty-github/scripts/coauthor-check.sh

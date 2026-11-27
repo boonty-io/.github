@@ -1,0 +1,17 @@
+# AI Co-Authored-By check — copy into <repo>/.github/workflows/coauthor-check.yml.
+# See boonty-io/.github .github/workflows/coauthor-check.yml for what it does
+# and why it can be trusted. Replace <sha> with the boonty-io/.github main
+# commit to pin (docs/on-demand-ci.md, "Pinning").
+name: coauthor-check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  coauthor:
+    uses: boonty-io/.github/.github/workflows/coauthor-check.yml@<sha> # main
+    permissions:
+      contents: read

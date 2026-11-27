@@ -72,6 +72,7 @@ jobs:
       - run: test/pr-status-decide.test.sh
       - run: test/pr-status.test.sh
       - run: test/seed-drift-check.test.sh
+      - run: test/coauthor-check.test.sh
 
   on-demand-guard:
     name: on-demand guard cases
