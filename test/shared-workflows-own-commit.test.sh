@@ -58,5 +58,8 @@ PY
   # no empty `inputs:` key left under workflow_call
   if grep -A1 -E '^    inputs:\s*$' "$f" | grep -qvE '^(    inputs:\s*|      .*|--)$'; then ko "$wf leaves an empty inputs: key"; else ok "$wf has no empty inputs: key"; fi
 done
+# CI runs this file, so a dropped `run:` line cannot silently retire it
+if grep -qE '^\s+- run: test/shared-workflows-own-commit\.test\.sh\s*$' .github/workflows/ci.yml; then ok "ci.yml runs this test"; else ko "ci.yml does not run this test"; fi
+
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]
