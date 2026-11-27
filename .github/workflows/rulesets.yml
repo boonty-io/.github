@@ -122,7 +122,7 @@ jobs:
           # plan: 2 = drift. On a PR that is the change under review, not an
           # error; on the schedule it means live rulesets were edited by hand.
           if [ "$rc" -eq 2 ] && [ "$GITHUB_EVENT_NAME" = pull_request_target ]; then
-            echo "::notice title=rulesets::this PR changes live rulesets; they are applied when it merges"
+            echo "::notice title=rulesets::this PR changes live rulesets; they are applied when it merges, except .github's own, which an owner applies by hand (docs/rulesets.md)"
             exit 0
           fi
           if [ "$rc" -eq 2 ]; then

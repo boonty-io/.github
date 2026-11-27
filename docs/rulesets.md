@@ -129,8 +129,20 @@ it from a checkout of `main`, with their own token:
 RULESETS_APPLY_SELF=1 scripts/rulesets.sh apply boonty-io rulesets/repos/.github.json
 ```
 
-The workflow never sets `RULESETS_APPLY_SELF` (`test/rulesets-workflow-files.test.sh`).
-This is a speed bump, not a lock: `main` needs no approval, so a PR could also
-edit the script or the workflow. The reviewer who approves the apply run is
-still the last checkpoint, and a change that lifts this hold is in the diff
-that reviewer sees.
+`RULESETS_APPLY_SELF` takes `1`; `0` or empty means held. No workflow sets it
+(`test/rulesets-workflow-files.test.sh` scans `.github/workflows`). The
+repository name is matched case-insensitively, as GitHub resolves it, so
+`.GitHub.json` is held too.
+
+This is a speed bump, not a lock:
+
+- `main` needs no approval, so a PR could also edit the script or the
+  workflow. The reviewer who approves the apply run is still the last
+  checkpoint, and a change that lifts this hold is in the diff that reviewer
+  sees.
+- A file naming another spelling of the repository that GitHub would still
+  resolve to `.github` (an old name after a rename) is not held. Review any
+  new file under `rulesets/repos/`.
+- While a held change waits for the owner, every apply fails red with exit 3,
+  even when its own repositories applied cleanly. Read the run's annotation
+  before approving the next one, and apply the held change promptly.

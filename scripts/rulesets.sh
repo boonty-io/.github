@@ -29,7 +29,7 @@
 # so the App does not loosen its own guard. A change there is reported as
 # held and apply exits 3 after the other repositories. An owner applies it by
 # hand with their own token and RULESETS_APPLY_SELF=1 (docs/rulesets.md),
-# which the workflow never sets. plan is unchanged.
+# which no workflow sets; 0 or empty means held. plan is unchanged.
 set -euo pipefail
 
 usage() { echo "usage: $0 plan|apply <owner> <file>... | export <owner/repo>" >&2; exit 64; }
@@ -116,7 +116,9 @@ for f in "$@"; do
   name="$(basename "$f" .json)"; repo="$owner/$name"
   write=""; note=""
   if [ "$cmd" = apply ]; then
-    if [ "$name" = .github ] && [ -z "$apply_self" ]; then note=" (held: .github is applied by an owner, docs/rulesets.md)"; else write=1; fi
+    # GitHub resolves repository names case-insensitively: `.GitHub.json`
+    # names the same repository and is held too.
+    if [ "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')" = .github ] && [ -z "$apply_self" ]; then note=" (held: .github is applied by an owner, docs/rulesets.md)"; else write=1; fi
   fi
   want="$(jq "$NORM"' map(norm) | sort_by(.name)' "$f")"
   l="$(list "$repo")" || { echo "error: could not list the rulesets of $repo" >&2; exit 1; }

@@ -30,10 +30,10 @@ case "$method $path" in
   "GET repos/boonty-io/.github/environments/"*/deployment-branch-policies)
     n="${path#repos/boonty-io/.github/environments/}"; cat "$EFIX/env-${n%/deployment-branch-policies}-policies.json" ;;
   "GET repos/boonty-io/.github/environments/"*) cat "$EFIX/env-${path##*/}.json" ;;
-  "GET repos/boonty-io/.github/rulesets") cat "$FIX/live-list.json" ;;
-  "GET repos/boonty-io/.github/rulesets/"*) cat "$FIX/live-${path##*/}.json" ;;
-  "PUT repos/boonty-io/.github/rulesets/"*) cp "$input" "$OUT/put-self-${path##*/}.json"; echo '{}' ;;
-  "POST repos/boonty-io/.github/rulesets") cp "$input" "$OUT/post-self-$(jq -r .name "$input").json"; echo '{}' ;;
+  "GET repos/boonty-io/."[Gg]it[Hh]ub"/rulesets") cat "$FIX/live-list.json" ;;
+  "GET repos/boonty-io/."[Gg]it[Hh]ub"/rulesets/"*) cat "$FIX/live-${path##*/}.json" ;;
+  "PUT repos/boonty-io/."[Gg]it[Hh]ub"/rulesets/"*) cp "$input" "$OUT/put-self-${path##*/}.json"; echo '{}' ;;
+  "POST repos/boonty-io/."[Gg]it[Hh]ub"/rulesets") cp "$input" "$OUT/post-self-$(jq -r .name "$input").json"; echo '{}' ;;
   "GET repos/boonty-io/demo/rulesets") cat "$FIX/live-list.json" ;;
   "GET repos/boonty-io/demo/rulesets/"*) cat "$FIX/live-${path##*/}.json" ;;
   "PUT repos/boonty-io/demo/rulesets/"*) cp "$input" "$OUT/put-${path##*/}.json"; echo '{}' ;;
@@ -235,6 +235,15 @@ if [ "$rc" = 0 ] && [ -f "$T/put-self-12.json" ] && [ -f "$T/post-self-New.json"
 # S5. RULESETS_APPLY_SELF takes 1 or empty, refused otherwise before any call
 rc=$(RULESETS_APPLY_SELF=yes run apply boonty-io "$(self desired.json)")
 if [ "$rc" = 64 ] && [ ! -s "$LOG" ]; then ok "RULESETS_APPLY_SELF=yes refused"; else ko "RULESETS_APPLY_SELF=yes (rc=$rc)"; fi
+
+# S5b. RULESETS_APPLY_SELF=0 means held, like empty
+rc=$(RULESETS_APPLY_SELF=0 run apply boonty-io "$(self desired.json)")
+if [ "$rc" = 3 ] && ! grep -qE -- '-X (PUT|POST)' "$LOG"; then ok "RULESETS_APPLY_SELF=0 holds"; else ko "RULESETS_APPLY_SELF=0 (rc=$rc)"; fi
+
+# S7. the repository name is matched case-insensitively, as GitHub resolves it
+mkdir -p "$T/case"; cp "$F/desired.json" "$T/case/.GitHub.json"
+rc=$(run apply boonty-io "$T/case/.GitHub.json")
+if [ "$rc" = 3 ] && grep -q '^.GitHub/Staging: update (held' "$T/out" && ! grep -qE -- '-X (PUT|POST)' "$LOG"; then ok "apply holds .GitHub.json too"; else ko "case-insensitive hold (rc=$rc)"; fi
 
 # S6. plan is unchanged for .github: drift exit 2, nothing held, nothing written
 rc=$(run plan boonty-io "$(self desired.json)")
