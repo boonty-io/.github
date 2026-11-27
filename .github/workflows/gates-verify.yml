@@ -255,7 +255,7 @@ jobs:
       # Also on every queue entry, whatever failed before it: the post script
       # comes from this checkout.
       - name: Check out the decision script
-        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) }}
+        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) && job.workflow_sha != '' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: boonty-io/.github
@@ -326,7 +326,7 @@ jobs:
       # PR head, on every run, and only `success` passes there
       # (scripts/gates-verify-post.sh; see the header).
       - name: Post gates/verified
-        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) }}
+        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) && job.workflow_sha != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}

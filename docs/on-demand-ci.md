@@ -235,7 +235,9 @@ actions) to one commit of `main`, written `@<sha> # main`. A merge here then
 changes no consumer's CI until that consumer takes the new commit. Every shared
 workflow here that checks out this repository takes its scripts at
 `job.workflow_sha`, the commit the `uses:` line names, and fails when that
-property is empty (`test/shared-workflows-own-commit.test.sh`). They take no
+property is empty. A step that runs after a failure (`!cancelled()`) also
+requires a non-empty `job.workflow_sha`, so nothing runs from the default
+branch (`test/shared-workflows-own-commit.test.sh`). They take no
 `shared_ref` input any more: a caller that still passes one fails to start
 with an unknown input. To test a branch of this repository from a consumer,
 point the `uses:` lines at that branch: the scripts follow the `uses:` ref.
