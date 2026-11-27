@@ -118,7 +118,8 @@ behind a required reviewer, and `main` is itself protected
 checks, admin bypass only through a PR). `plan` never writes, whatever its
 token.
 
-`apply` never writes `.github`'s own rulesets, so the App cannot loosen the
+`apply` does not write `.github`'s own rulesets unless an owner sets
+`RULESETS_APPLY_SELF=1`, so the App does not loosen, unattended, the
 protection of the repository that holds its key. `plan` and the daily drift
 check still compare `rulesets/repos/.github.json` with the live state. When a
 merged change to that file reaches `apply`, the run reports it as `held`,
