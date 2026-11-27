@@ -1,6 +1,6 @@
 # AI Co-Authored-By check (`coauthor-check.yml`)
 
-A commit's author and committer are the human who made it. AI help is recorded as an `Assisted-by: Claude Code` trailer, never as an AI `Co-Authored-By` (ai-config `shared/40-conventional-commits.md`). Once boonty-io/ai-config#1749 ships (a draft on 2026-11-27), Claude Code sessions in a synced consumer write that trailer and refuse an AI `Co-Authored-By` when they commit. This check covers every other commit: it fails a pull request when any commit in its range carries an AI `Co-Authored-By` trailer.
+A commit's author and committer are the human who made it. AI help is recorded as an `Assisted-by: Claude Code` trailer, never as an AI `Co-Authored-By` (ai-config `shared/40-conventional-commits.md`). Once [boonty-io/ai-config#1749](https://github.com/boonty-io/ai-config/pull/1749) ships, Claude Code sessions in a synced consumer write that trailer and refuse an AI `Co-Authored-By` when they commit. This check covers every other commit: it fails a pull request when any commit in its range carries an AI `Co-Authored-By` trailer.
 
 It is not a required context yet. Making it one is a change to `rulesets/`, in its own PR.
 
@@ -22,11 +22,11 @@ A base without the matcher, meaning a consumer on an ai-config release older tha
 ## What it does not cover
 
 - **The squash message.** Only the PR's commit messages are scanned. A squash merge builds the landed message from the repository's squash settings, which can include the PR title and body, so a trailer typed into the PR body is not seen here.
-- **Fork PRs.** The caller checks out `head.sha` from its own repository, so a PR from a fork is untested and can fail at checkout. Boonty repositories take no fork PRs.
+- **Fork PRs.** The caller checks out `head.sha` from its own repository, so a PR from a fork is untested and can fail at checkout.
 
 ## Why it can be trusted
 
-- **The matcher comes from the base.** The script reads it with `git show <base>:.claude/hooks/check-commit-msg-coauthor.sh`. A PR that edits or empties its own copy is still judged by the base's.
+- **The matcher comes from the base.** The script reads it with `git show <base>:.claude/hooks/check-commit-msg-coauthor.sh` into a temporary directory and runs it there. A PR that edits or empties its own copy is still judged by the base's. The matcher looks for its `coauthor-allowlist` beside itself, which is that temporary directory, so no allowlist from the PR's tree is read.
 - **No PR code runs.** The caller's checkout is used for its history only. The script comes from this repository, at the workflow's own commit.
 - **Read-only.** `pull_request` with `contents: read`, and no secrets.
 
