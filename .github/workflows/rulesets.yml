@@ -4,7 +4,8 @@
 #   pull_request_target touching them → plan: the PR's files against live,
 #                                        in the job summary
 #   push to main touching them         → apply: create / update to match
-#                                        (never deletes)
+#                                        (never deletes); .github's own
+#                                        is held, exit 3 (docs/rulesets.md)
 #   daily schedule                     → plan: red when live state drifted
 #   workflow_dispatch                  → plan, or apply from main only
 #
