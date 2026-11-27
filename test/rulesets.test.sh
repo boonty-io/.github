@@ -30,6 +30,10 @@ case "$method $path" in
   "GET repos/boonty-io/.github/environments/"*/deployment-branch-policies)
     n="${path#repos/boonty-io/.github/environments/}"; cat "$EFIX/env-${n%/deployment-branch-policies}-policies.json" ;;
   "GET repos/boonty-io/.github/environments/"*) cat "$EFIX/env-${path##*/}.json" ;;
+  "GET repos/boonty-io/.github/rulesets") cat "$FIX/live-list.json" ;;
+  "GET repos/boonty-io/.github/rulesets/"*) cat "$FIX/live-${path##*/}.json" ;;
+  "PUT repos/boonty-io/.github/rulesets/"*) cp "$input" "$OUT/put-self-${path##*/}.json"; echo '{}' ;;
+  "POST repos/boonty-io/.github/rulesets") cp "$input" "$OUT/post-self-$(jq -r .name "$input").json"; echo '{}' ;;
   "GET repos/boonty-io/demo/rulesets") cat "$FIX/live-list.json" ;;
   "GET repos/boonty-io/demo/rulesets/"*) cat "$FIX/live-${path##*/}.json" ;;
   "PUT repos/boonty-io/demo/rulesets/"*) cp "$input" "$OUT/put-${path##*/}.json"; echo '{}' ;;
@@ -208,6 +212,33 @@ if [ "$rc" = 1 ] && grep -q 'invalid repository name' "$T/out" && [ ! -s "$LOG" 
 cp "$F/desired.json" "$T/dots/a b.json"
 rc=$(run apply boonty-io "$T/dots/a b.json")
 if [ "$rc" = 1 ] && grep -q 'invalid repository name' "$T/out" && [ ! -s "$LOG" ]; then ok "rulesets repository with a space refused"; else ko "rulesets repository with a space (rc=$rc)"; fi
+
+# S1. apply never writes .github's own rulesets: the change is held, reported, exit 3
+self() { mkdir -p "$T/self"; cp "$F/$1" "$T/self/.github.json"; echo "$T/self/.github.json"; }
+rc=$(run apply boonty-io "$(self desired.json)")
+if [ "$rc" = 3 ] && grep -qx '.github/Staging: update (held: .github is applied by an owner, docs/rulesets.md)' "$T/out" \
+   && grep -qx '.github/New: create (held: .github is applied by an owner, docs/rulesets.md)' "$T/out" \
+   && grep -q 'error: .github ruleset changes held' "$T/out" && ! grep -qE -- '-X (PUT|POST|DELETE)' "$LOG"; then ok "apply holds .github changes, writes nothing (rc=$rc)"; else ko "apply holds .github (rc=$rc)"; fi
+
+# S2. the hold is per repository: the other files of the same run are still applied
+rc=$(run apply boonty-io "$(desired desired.json)" "$(self desired.json)")
+if [ "$rc" = 3 ] && [ -f "$T/put-12.json" ] && [ -f "$T/post-New.json" ] && ! ls "$T"/put-self-* "$T"/post-self-* >/dev/null 2>&1; then ok "other repos still applied next to a held .github"; else ko "hold scope (rc=$rc)"; fi
+
+# S3. an unchanged .github is not held: apply exits 0
+rc=$(run apply boonty-io "$(self desired-same.json)")
+if [ "$rc" = 0 ] && ! grep -q 'held' "$T/out"; then ok "unchanged .github is not held"; else ko "unchanged .github (rc=$rc)"; fi
+
+# S4. an owner applies it by hand with RULESETS_APPLY_SELF=1
+rc=$(RULESETS_APPLY_SELF=1 run apply boonty-io "$(self desired.json)")
+if [ "$rc" = 0 ] && [ -f "$T/put-self-12.json" ] && [ -f "$T/post-self-New.json" ] && ! grep -q 'held' "$T/out"; then ok "RULESETS_APPLY_SELF=1 applies .github"; else ko "apply self (rc=$rc)"; fi
+
+# S5. RULESETS_APPLY_SELF takes 1 or empty, refused otherwise before any call
+rc=$(RULESETS_APPLY_SELF=yes run apply boonty-io "$(self desired.json)")
+if [ "$rc" = 64 ] && [ ! -s "$LOG" ]; then ok "RULESETS_APPLY_SELF=yes refused"; else ko "RULESETS_APPLY_SELF=yes (rc=$rc)"; fi
+
+# S6. plan is unchanged for .github: drift exit 2, nothing held, nothing written
+rc=$(run plan boonty-io "$(self desired.json)")
+if [ "$rc" = 2 ] && grep -qx '.github/Staging: update' "$T/out" && ! grep -q 'held' "$T/out" && ! grep -qE -- '-X (PUT|POST|DELETE)' "$LOG"; then ok "plan of .github unchanged"; else ko "plan .github (rc=$rc)"; fi
 
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]

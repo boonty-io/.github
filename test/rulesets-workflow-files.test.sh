@@ -131,4 +131,9 @@ if [ -z "$step" ]; then ko "no PR-head step in $wf"; else
   done
 fi
 
+
+# The workflow never lifts the hold on .github's own rulesets: only an owner,
+# by hand, sets RULESETS_APPLY_SELF (docs/rulesets.md).
+if grep -q 'RULESETS_APPLY_SELF' "$wf"; then ko "$wf sets RULESETS_APPLY_SELF"; else ok "workflow never sets RULESETS_APPLY_SELF"; fi
+
 [ "$fail" -eq 0 ]

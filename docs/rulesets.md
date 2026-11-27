@@ -117,3 +117,20 @@ behind a required reviewer, and `main` is itself protected
 (`rulesets/repos/.github.json`: PR with no required approval, required
 checks, admin bypass only through a PR). `plan` never writes, whatever its
 token.
+
+`apply` never writes `.github`'s own rulesets, so the App cannot loosen the
+protection of the repository that holds its key. `plan` and the daily drift
+check still compare `rulesets/repos/.github.json` with the live state. When a
+merged change to that file reaches `apply`, the run reports it as `held`,
+applies every other repository, and fails with exit 3. An owner then applies
+it from a checkout of `main`, with their own token:
+
+```bash
+RULESETS_APPLY_SELF=1 scripts/rulesets.sh apply boonty-io rulesets/repos/.github.json
+```
+
+The workflow never sets `RULESETS_APPLY_SELF` (`test/rulesets-workflow-files.test.sh`).
+This is a speed bump, not a lock: `main` needs no approval, so a PR could also
+edit the script or the workflow. The reviewer who approves the apply run is
+still the last checkpoint, and a change that lifts this hold is in the diff
+that reviewer sees.

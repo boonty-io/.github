@@ -128,6 +128,11 @@ jobs:
           if [ "$rc" -eq 2 ]; then
             echo "::error title=rulesets::live rulesets drifted from rulesets/repos; update the files or re-apply"
           fi
+          # apply: 3 = a change to .github's own rulesets was held, every
+          # other repository applied. An owner applies it by hand.
+          if [ "$rc" -eq 3 ]; then
+            echo "::error title=rulesets::.github's own rulesets are not applied by this workflow; an owner applies the change by hand (docs/rulesets.md)"
+          fi
           exit "$rc"
 
       # Also after a rulesets drift (that step exits 2), so one drift never
