@@ -18,11 +18,6 @@ name: on-demand-guard
 on:
   workflow_call:
     inputs:
-      shared_ref:
-        description: Deprecated. The workflow checks out its own commit (`job.workflow_sha`) and reads this only when that property is empty. Still declared so callers on `@main` that pass it keep validating. Do not pass it with a SHA pin, because on-demand-guard counts it as a ref.
-        required: false
-        default: main
-        type: string
 
 permissions: {}
 
@@ -39,17 +34,17 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: .github/workflows
-      - name: Warn when this workflow cannot see its own commit
+      - name: Fail when this workflow cannot see its own commit
         if: job.workflow_sha == ''
-        env:
-          SHARED_REF: ${{ inputs.shared_ref }}
-        run: echo "::warning::job.workflow_sha is empty, so boonty-io/.github is checked out at '${SHARED_REF:-the default branch}', not at this workflow's own commit"
+        run: |
+          echo "::error::job.workflow_sha is empty, so this workflow cannot check out its own commit of boonty-io/.github"
+          exit 1
 
       - name: Check out the guard
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: boonty-io/.github
-          ref: ${{ job.workflow_sha || inputs.shared_ref }}
+          ref: ${{ job.workflow_sha }}
           path: .shared-github
           sparse-checkout: scripts/on-demand-guard.py
           sparse-checkout-cone-mode: false
