@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Static checks: the reusable workflows that check out boonty-io/.github take
-# their scripts from their own commit (`job.workflow_sha`), never from a
-# caller-supplied ref, and fail when that property is empty.
+# Static checks on every workflow here that checks out boonty-io/.github
+# itself: it takes its scripts from its own commit (`job.workflow_sha`), never
+# from a caller-supplied ref, and fails when that property is empty.
 # Run: test/shared-workflows-own-commit.test.sh
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 fail=0; n=0
 ok() { n=$((n+1)); echo "✓ $1"; }
 ko() { n=$((n+1)); fail=$((fail+1)); echo "✗ $1"; }
-for wf in ci-hint ci-request gates-verify on-demand-guard; do
-  f=".github/workflows/$wf.yml"
+wfs="$(grep -lE 'repository: .?boonty-io/\.github.?[[:space:]]*$' .github/workflows/*.yml)"
+[ "$(wc -l <<<"$wfs")" -ge 6 ] || { echo "✗ found only: $wfs"; exit 1; }
+for f in $wfs; do
+  wf="$(basename "$f" .yml)"
   if grep -q 'shared_ref' "$f"; then ko "$wf declares or reads shared_ref"; else ok "$wf has no shared_ref"; fi
   # every boonty-io/.github checkout, quoted or not, is at job.workflow_sha
   checkouts="$(grep -cE "repository: ['\"]?boonty-io/\.github['\"]?\s*$" "$f")"

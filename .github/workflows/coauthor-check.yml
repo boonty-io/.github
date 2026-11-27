@@ -46,6 +46,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Fail when this workflow cannot see its own commit
+        if: job.workflow_sha == ''
+        run: |
+          echo "::error::job.workflow_sha is empty, so this workflow cannot check out its own commit of boonty-io/.github"
+          exit 1
+
       - name: Check out the script
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

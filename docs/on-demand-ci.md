@@ -232,9 +232,10 @@ policy, docs impact) are not suites and may stay on `pull_request`.
 
 A consumer pins every `boonty-io/.github` reference (shared workflows and
 actions) to one commit of `main`, written `@<sha> # main`. A merge here then
-changes no consumer's CI until that consumer takes the new commit. The shared
-workflows check out their own scripts at `job.workflow_sha`, the commit the
-`uses:` line names, and fail when that property is empty. They take no
+changes no consumer's CI until that consumer takes the new commit. Every shared
+workflow here that checks out this repository takes its scripts at
+`job.workflow_sha`, the commit the `uses:` line names, and fails when that
+property is empty (`test/shared-workflows-own-commit.test.sh`). They take no
 `shared_ref` input any more: a caller that still passes one fails to start
 with an unknown input. To test a branch of this repository from a consumer,
 point the `uses:` lines at that branch: the scripts follow the `uses:` ref.
