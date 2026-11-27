@@ -1,7 +1,8 @@
 # Rulesets as code
 
 Each repository's own rulesets are described in `rulesets/repos/<repo>.json`.
-A merge to `main` applies them. Nobody edits a ruleset in the GitHub UI or with
+A merge to `main` applies them, except `.github`'s own, which an owner
+applies by hand (see ".github's own rulesets" below). Nobody edits a ruleset in the GitHub UI or with
 a personal `gh api -X PUT` any more.
 
 ## How a change goes
@@ -16,11 +17,14 @@ a personal `gh api -X PUT` any more.
    `[A-Za-z0-9._-]`, or one that is `.` or `..`, is refused before any call.
 3. Merge. Once a reviewer of the `rulesets` environment (Othella or
    HugoSudefou) approves the run, the workflow runs `apply`: rulesets named in
-   the file are created or updated to match. A live ruleset that no file names
+   the file are created or updated to match, except `.github`'s own, which
+   are held for an owner. A live ruleset that no file names
    is reported `unmanaged` and left alone. Nothing is ever deleted.
 4. Every day at 05:23 UTC, `plan` runs again. The run turns red when a live
    ruleset no longer matches its file (someone edited it by hand). Fix the
-   file, or re-apply with `workflow_dispatch` in `apply` mode.
+   file, or re-apply with `workflow_dispatch` in `apply` mode. For
+   `.github` itself that run holds the change, so an owner re-applies it by
+   hand with `RULESETS_APPLY_SELF=1` (".github's own rulesets" below).
 
 A branch's merge queue is a `merge_queue` rule in the same file, with
 `strict_required_status_checks_policy: false` beside it
@@ -117,3 +121,37 @@ behind a required reviewer, and `main` is itself protected
 (`rulesets/repos/.github.json`: PR with no required approval, required
 checks, admin bypass only through a PR). `plan` never writes, whatever its
 token.
+
+## .github's own rulesets
+
+`apply` does not write `.github`'s own rulesets unless an owner sets
+`RULESETS_APPLY_SELF=1`, so the App does not loosen, unattended, the
+protection of the repository that holds its key. `plan` and the daily drift
+check still compare `rulesets/repos/.github.json` with the live state. When a
+merged change to that file reaches `apply`, the run reports it as `held`,
+applies every other repository, and fails with exit 3. An owner then applies
+it from a checkout of `main`, with their own token:
+
+```bash
+RULESETS_APPLY_SELF=1 scripts/rulesets.sh apply boonty-io rulesets/repos/.github.json
+```
+
+`RULESETS_APPLY_SELF` takes `1`; `0` or empty means held, and any other value
+stops `plan` and `apply` before any call. No workflow sets it
+(`test/rulesets-workflow-files.test.sh` scans `.github/workflows`). The
+repository name is matched case-insensitively, as GitHub resolves it, so
+`.GitHub.json` is held too.
+
+This is a speed bump, not a lock:
+
+- `main` needs no approval, so a PR could also edit the script or the
+  workflow. The reviewer who approves the apply run is still the last
+  checkpoint, and a change that lifts this hold is in the diff that reviewer
+  sees. The test that checks no workflow sets `RULESETS_APPLY_SELF` can be
+  edited in the same PR, so it catches drift, not intent.
+- The hold matches the file's basename. Any other spelling that GitHub would
+  still resolve to `.github` (an old name after a rename, for one) is not
+  held. Review any new file under `rulesets/repos/`.
+- While a held change waits for the owner, every apply fails red with exit 3,
+  even when its own repositories applied cleanly. Read the run's annotation
+  before approving the next one, and apply the held change promptly.

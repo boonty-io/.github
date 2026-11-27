@@ -4,7 +4,8 @@
 #   pull_request_target touching them → plan: the PR's files against live,
 #                                        in the job summary
 #   push to main touching them         → apply: create / update to match
-#                                        (never deletes)
+#                                        (never deletes); .github's own
+#                                        is held, exit 3 (docs/rulesets.md)
 #   daily schedule                     → plan: red when live state drifted
 #   workflow_dispatch                  → plan, or apply from main only
 #
@@ -122,11 +123,16 @@ jobs:
           # plan: 2 = drift. On a PR that is the change under review, not an
           # error; on the schedule it means live rulesets were edited by hand.
           if [ "$rc" -eq 2 ] && [ "$GITHUB_EVENT_NAME" = pull_request_target ]; then
-            echo "::notice title=rulesets::this PR changes live rulesets; they are applied when it merges"
+            echo "::notice title=rulesets::this PR changes live rulesets; they are applied when it merges, except .github's own, which an owner applies by hand (docs/rulesets.md)"
             exit 0
           fi
           if [ "$rc" -eq 2 ]; then
             echo "::error title=rulesets::live rulesets drifted from rulesets/repos; update the files or re-apply"
+          fi
+          # apply: 3 = a change to .github's own rulesets was held, every
+          # other repository applied. An owner applies it by hand.
+          if [ "$rc" -eq 3 ]; then
+            echo "::error title=rulesets::.github's own rulesets are not applied by this workflow; an owner applies the change by hand (docs/rulesets.md)"
           fi
           exit "$rc"
 

@@ -23,6 +23,13 @@
 # request bodies would then carry no bypass actors and clear them.
 # For the same reason, export with a read-only token writes every ruleset
 # with no bypass actors: export with a token that can write rulesets.
+#
+# apply never writes the rulesets of `.github` itself (the file
+# rulesets/repos/.github.json): that repository holds the write App's key,
+# so the App does not loosen its own guard. A change there is reported as
+# held and apply exits 3 after the other repositories. An owner applies it by
+# hand with their own token and RULESETS_APPLY_SELF=1 (docs/rulesets.md),
+# which no workflow sets; 0 or empty means held. plan is unchanged.
 set -euo pipefail
 
 usage() { echo "usage: $0 plan|apply <owner> <file>... | export <owner/repo>" >&2; exit 64; }
@@ -89,6 +96,12 @@ case "$skip_bypass" in
      echo "note: bypass actors are not compared (RULESETS_SKIP_BYPASS=1: the token cannot read them)" ;;
   *) echo "error: RULESETS_SKIP_BYPASS must be 1 or empty" >&2; exit 64 ;;
 esac
+apply_self="${RULESETS_APPLY_SELF:-}"
+case "$apply_self" in
+  ""|0) apply_self="" ;;
+  1) ;;
+  *) echo "error: RULESETS_APPLY_SELF must be 1 or empty" >&2; exit 64 ;;
+esac
 # Applied to both sides of a comparison only; never to a request body. Keys
 # are sorted (-S): GitHub returns a rule's parameters in its own key order,
 # which is not drift.
@@ -97,10 +110,16 @@ view() { if [ -n "$skip_bypass" ]; then jq -cS 'del(.bypass_actors)'; else jq -c
 owner="$1"; shift
 for f in "$@"; do check_file "$f"; done   # every file is valid before any call
 
-drift=0
+drift=0; held=0
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 for f in "$@"; do
   name="$(basename "$f" .json)"; repo="$owner/$name"
+  write=""; note=""
+  if [ "$cmd" = apply ]; then
+    # GitHub resolves repository names case-insensitively: `.GitHub.json`
+    # names the same repository and is held too.
+    if [ "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')" = .github ] && [ -z "$apply_self" ]; then note=" (held: .github is applied by an owner, docs/rulesets.md)"; else write=1; fi
+  fi
   want="$(jq "$NORM"' map(norm) | sort_by(.name)' "$f")"
   l="$(list "$repo")" || { echo "error: could not list the rulesets of $repo" >&2; exit 1; }
   have="$(live "$repo" "$l")" || { echo "error: could not read the rulesets of $repo" >&2; exit 1; }
@@ -109,17 +128,17 @@ for f in "$@"; do
     w="$(jq -c --arg n "$rn" '.[] | select(.name == $n)' <<<"$want")"
     h="$(jq -c --arg n "$rn" '.[] | select(.name == $n)' <<<"$have")"
     if [ -z "$h" ]; then
-      echo "$name/$rn: create"; drift=1
-      if [ "$cmd" = apply ]; then
+      echo "$name/$rn: create$note"; drift=1; [ -z "$note" ] || held=1
+      if [ -n "$write" ]; then
         printf '%s' "$w" > "$tmp/body.json"
         gh api -X POST "repos/$repo/rulesets" --input "$tmp/body.json" --silent
       fi
     elif [ "$(view <<<"$w")" = "$(view <<<"$h")" ]; then
       echo "$name/$rn: unchanged"
     else
-      echo "$name/$rn: update"; drift=1
+      echo "$name/$rn: update$note"; drift=1; [ -z "$note" ] || held=1
       diff <(view <<<"$h" | jq -S .) <(view <<<"$w" | jq -S .) | sed 's/^/    /' || true
-      if [ "$cmd" = apply ]; then
+      if [ -n "$write" ]; then
         id="$(jq -r --arg n "$rn" '.[] | select(.name == $n) | .id' <<<"$l")"
         printf '%s' "$w" > "$tmp/body.json"
         gh api -X PUT "repos/$repo/rulesets/$id" --input "$tmp/body.json" --silent
@@ -131,4 +150,8 @@ for f in "$@"; do
 done
 
 if [ "$cmd" = plan ] && [ "$drift" -eq 1 ]; then exit 2; fi
+if [ "$held" -eq 1 ]; then
+  echo "error: .github ruleset changes held, nothing written for .github: an owner applies them by hand (docs/rulesets.md)" >&2
+  exit 3
+fi
 exit 0
