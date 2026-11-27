@@ -24,6 +24,15 @@ for wf in ci-hint ci-request gates-verify on-demand-guard; do
       g && /exit 1/ { e=1 }
       END { if (g && !e) bad=1; exit (bad || n == 0) }' "$f"; then ok "$wf fails when job.workflow_sha is empty"
   else ko "$wf does not fail on an empty job.workflow_sha"; fi
+  # every job that checks out boonty-io/.github has such a guard
+  if awk -v q="'" '
+      /^  [A-Za-z0-9_-]+:[ \t]*$/ { if (co && !gd) bad=1; co=0; gd=0 }
+      /repository: .?boonty-io\/\.github.?[ \t]*$/ { co=1 }
+      index($0, "job.workflow_sha == " q q) { gd=1 }
+      END { if (co && !gd) bad=1; exit bad }' "$f"; then ok "$wf guards every job that checks out boonty-io/.github"
+  else ko "$wf has a job that checks out boonty-io/.github without the guard"; fi
+  # no empty `inputs:` key left under workflow_call
+  if grep -A1 -E '^    inputs:\s*$' "$f" | grep -qvE '^(    inputs:\s*|      .*|--)$'; then ko "$wf leaves an empty inputs: key"; else ok "$wf has no empty inputs: key"; fi
 done
 echo; echo "$((n - fail))/$n passed"
 [ "$fail" -eq 0 ]

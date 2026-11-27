@@ -17,7 +17,6 @@ name: on-demand-guard
 
 on:
   workflow_call:
-    inputs:
 
 permissions: {}
 
