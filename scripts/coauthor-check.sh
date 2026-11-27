@@ -35,7 +35,10 @@ if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
   exit 1
 fi
 if ! git cat-file -e "${BASE_SHA}:${MATCHER_PATH}" 2>/dev/null; then
-  echo "::notice title=coauthor-check::no ${MATCHER_PATH} on the base ${BASE_SHA}: this repository's ai-config predates the matcher, so nothing was checked."
+  msg="no ${MATCHER_PATH} on the base ${BASE_SHA}: this repository's ai-config predates the matcher, so nothing was checked."
+  echo "::notice title=coauthor-check::${msg}"
+  # A green check that checked nothing: say it where a reader of the run sees it.
+  [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "coauthor-check: ${msg}" >> "$GITHUB_STEP_SUMMARY"
   exit 0
 fi
 if ! git show "${BASE_SHA}:${MATCHER_PATH}" > "$work/matcher.sh"; then

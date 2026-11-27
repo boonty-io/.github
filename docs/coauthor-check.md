@@ -17,7 +17,12 @@ Copy [`templates/coauthor-check.yml`](../templates/coauthor-check.yml) into the 
 - any commit is rejected by the matcher (the log names each one);
 - the base commit, the matcher at the base, the range or a message cannot be read.
 
-A base without the matcher, meaning a consumer on an ai-config release older than the matcher, is skipped with a notice. The check starts working with that repo's first ai-config bump that ships the matcher.
+A base without the matcher, meaning a consumer on an ai-config release older than the matcher, is skipped. The skip is a green check, so it is written to the run's job summary as well as a notice. The check starts working with that repo's first ai-config bump that ships the matcher.
+
+## What it does not cover
+
+- **The squash message.** Only the PR's commit messages are scanned. A squash merge builds the landed message from the repository's squash settings, which can include the PR title and body, so a trailer typed into the PR body is not seen here.
+- **Fork PRs.** The caller checks out `head.sha` from its own repository, so a PR from a fork is untested and can fail at checkout. Boonty repositories take no fork PRs.
 
 ## Why it can be trusted
 

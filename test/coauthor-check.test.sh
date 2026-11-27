@@ -64,6 +64,11 @@ expect "matcher read from base, not head" "$d" "$b" "$(git -C "$d" rev-parse HEA
 d="$(repo nomatcher no)"; b="$(git -C "$d" rev-parse HEAD)"
 commit "$d" $'feat: x\n\nCo-Authored-By: Claude <noreply@anthropic.com>'
 expect "no matcher at base skips" "$d" "$b" "$(git -C "$d" rev-parse HEAD)" 0 "no .claude/hooks/check-commit-msg-coauthor.sh"
+# ... and says so in the job summary, where a green check that checked nothing is visible
+summary="$work/summary.md"
+( cd "$d" && GITHUB_STEP_SUMMARY="$summary" BASE_SHA="$b" HEAD_SHA="$(git -C "$d" rev-parse HEAD)" "$check" >/dev/null 2>&1 )
+n=$((n + 1))
+if grep -q "nothing was checked" "$summary" 2>/dev/null; then echo "✓ skip is written to the job summary"; else echo "✗ skip is written to the job summary"; fail=$((fail + 1)); fi
 
 # 5. a range git cannot read fails instead of passing
 d="$(repo broken yes)"; b="$(git -C "$d" rev-parse HEAD)"
