@@ -8,8 +8,9 @@
 #   BASE_SHA  the PR's base commit (pull_request.base.sha)
 #   HEAD_SHA  the PR's head commit (pull_request.head.sha)
 #
-# The pattern is not restated here. Every consumer synced by ai-config carries
-# its matcher at .claude/hooks/check-commit-msg-coauthor.sh, and this script
+# The pattern is not restated here. Every consumer synced by an ai-config
+# release that ships the matcher (boonty-io/ai-config#1749 onward) carries it
+# at .claude/hooks/check-commit-msg-coauthor.sh, and this script
 # runs that file AS IT IS ON BASE_SHA, never the head's copy: a PR cannot
 # neuter the check that judges it. A base without the matcher (a consumer on
 # an ai-config release older than the matcher) is skipped with a notice.

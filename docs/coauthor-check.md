@@ -1,18 +1,18 @@
 # AI Co-Authored-By check (`coauthor-check.yml`)
 
-A commit's author and committer are the human who made it. AI help is recorded as an `Assisted-by: Claude Code` trailer, never as an AI `Co-Authored-By` (ai-config `shared/40-conventional-commits.md`). Claude Code sessions in a synced consumer already write that trailer and refuse an AI `Co-Authored-By` when they commit. This check covers every other commit: it fails a pull request when any commit in its range carries an AI `Co-Authored-By` trailer.
+A commit's author and committer are the human who made it. AI help is recorded as an `Assisted-by: Claude Code` trailer, never as an AI `Co-Authored-By` (ai-config `shared/40-conventional-commits.md`). Once boonty-io/ai-config#1749 ships (a draft on 2026-11-27), Claude Code sessions in a synced consumer write that trailer and refuse an AI `Co-Authored-By` when they commit. This check covers every other commit: it fails a pull request when any commit in its range carries an AI `Co-Authored-By` trailer.
 
 It is not a required context yet. Making it one is a change to `rulesets/`, in its own PR.
 
 ## Wiring
 
-Copy [`templates/coauthor-check.yml`](../templates/coauthor-check.yml) into the repo's `.github/workflows/` and pin the `uses:` commit. It runs on `pull_request` `opened`, `synchronize` and `reopened`, and takes a few seconds.
+Copy [`templates/coauthor-check.yml`](../templates/coauthor-check.yml) into the repo's `.github/workflows/` and pin the `uses:` commit. It runs on `pull_request` `opened`, `synchronize` and `reopened`.
 
 `runs_on` picks the runner. It is a JSON string or array and defaults to `"ubuntu-latest"`. Pass `'["self-hosted","deskmini"]'` to run on the minis.
 
 ## What it runs
 
-[`scripts/coauthor-check.sh`](../scripts/coauthor-check.sh) holds no pattern. It runs the consumer's `.claude/hooks/check-commit-msg-coauthor.sh`, which `boonty-ai sync` copies from ai-config's matcher, on every commit message in `base..head`, merges included. It fails when:
+[`scripts/coauthor-check.sh`](../scripts/coauthor-check.sh) holds no pattern. It runs the consumer's `.claude/hooks/check-commit-msg-coauthor.sh`, which `boonty-ai sync` copies from ai-config's matcher from the release that ships boonty-io/ai-config#1749 onward, on every commit message in `base..head`, merges included. It fails when:
 
 - any commit is rejected by the matcher (the log names each one);
 - the base commit, the matcher at the base, the range or a message cannot be read.
