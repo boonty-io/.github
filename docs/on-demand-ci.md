@@ -232,15 +232,15 @@ policy, docs impact) are not suites and may stay on `pull_request`.
 
 A consumer pins every `boonty-io/.github` reference (shared workflows and
 actions) to one commit of `main`, written `@<sha> # main`. A merge here then
-changes no consumer's CI until that consumer takes the new commit. The shared
-workflows check out their own scripts at `job.workflow_sha`, the commit the
-`uses:` line names, so the `shared_ref` input is deprecated: it is ignored
-unless that property is empty, and a run where it is empty logs a warning. A
-consumer that pins by commit passes no `shared_ref`: the guard counts it as a
-ref, so `shared_ref: main` next to `@<sha>` is refused as a second ref. To test a branch of this
-repository from a consumer, point the `uses:` lines at that branch: the
-scripts follow the `uses:` ref. A `shared_ref` naming another branch is used
-only when `job.workflow_sha` is empty, and that run logs a warning.
+changes no consumer's CI until that consumer takes the new commit. Every shared
+workflow here that checks out this repository takes its scripts at
+`job.workflow_sha`, the commit the `uses:` line names, and fails when that
+property is empty. A step that runs after a failure (`!cancelled()`) also
+requires a non-empty `job.workflow_sha`, so nothing runs from the default
+branch (`test/shared-workflows-own-commit.test.sh`). They take no
+`shared_ref` input any more: a caller that still passes one fails to start
+with an unknown input. To test a branch of this repository from a consumer,
+point the `uses:` lines at that branch: the scripts follow the `uses:` ref.
 
 Dependabot keeps the pins current. `boonty-io/.github` has no tags, so
 Dependabot moves the pin to the latest commit on `main`. Its configuration is

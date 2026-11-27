@@ -56,6 +56,7 @@ jobs:
       - run: test/ci-request-already-ran.test.sh
       - run: test/rulesets.test.sh
       - run: test/rulesets-workflow-files.test.sh
+      - run: test/shared-workflows-own-commit.test.sh
       - run: test/gates-verify.test.sh
       - run: test/gates-verify-resolve.test.sh
       - run: test/gates-verify-facts.test.sh

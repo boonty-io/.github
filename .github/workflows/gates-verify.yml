@@ -45,12 +45,6 @@ name: gates-verify
 
 on:
   workflow_call:
-    inputs:
-      shared_ref:
-        description: Deprecated. The workflow checks out its own commit (`job.workflow_sha`) and reads this only when that property is empty. Still declared so callers on `@main` that pass it keep validating. Do not pass it with a SHA pin, because on-demand-guard counts it as a ref.
-        required: false
-        default: main
-        type: string
 
 permissions: {}
 
@@ -67,12 +61,17 @@ jobs:
     outputs:
       pr: ${{ steps.t.outputs.pr }}
     steps:
+      - name: Fail when this workflow cannot see its own commit
+        if: github.event_name == 'merge_group' && job.workflow_sha == ''
+        run: |
+          echo "::error::job.workflow_sha is empty, so this workflow cannot check out its own commit of boonty-io/.github"
+          exit 1
       - name: Check out the parser
         if: github.event_name == 'merge_group'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: boonty-io/.github
-          ref: ${{ job.workflow_sha || inputs.shared_ref }}
+          ref: ${{ job.workflow_sha }}
           path: shared
           sparse-checkout: |
             scripts/merge-group-target.sh
@@ -144,18 +143,18 @@ jobs:
             echo "::notice title=gates-verify::the title names an ai-config bump but the title, branch or fork check refused it; no bump exemption"
           fi
 
-      - name: Warn when this workflow cannot see its own commit
+      - name: Fail when this workflow cannot see its own commit
         if: steps.pr.outputs.version != '' && job.workflow_sha == ''
-        env:
-          SHARED_REF: ${{ inputs.shared_ref }}
-        run: echo "::warning::job.workflow_sha is empty, so boonty-io/.github is checked out at '${SHARED_REF:-the default branch}', not at this workflow's own commit"
+        run: |
+          echo "::error::job.workflow_sha is empty, so this workflow cannot check out its own commit of boonty-io/.github"
+          exit 1
 
       - name: Check out the bump scripts
         if: steps.pr.outputs.version != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: boonty-io/.github
-          ref: ${{ job.workflow_sha || inputs.shared_ref }}
+          ref: ${{ job.workflow_sha }}
           path: shared
           sparse-checkout: |
             scripts/bump-reproduces.sh
@@ -247,20 +246,20 @@ jobs:
             echo "base=$(jq -r .baseRefName pr.json)"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Warn when this workflow cannot see its own commit
-        if: steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '' && job.workflow_sha == ''
-        env:
-          SHARED_REF: ${{ inputs.shared_ref }}
-        run: echo "::warning::job.workflow_sha is empty, so boonty-io/.github is checked out at '${SHARED_REF:-the default branch}', not at this workflow's own commit"
+      - name: Fail when this workflow cannot see its own commit
+        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) && job.workflow_sha == '' }}
+        run: |
+          echo "::error::job.workflow_sha is empty, so this workflow cannot check out its own commit of boonty-io/.github"
+          exit 1
 
       # Also on every queue entry, whatever failed before it: the post script
       # comes from this checkout.
       - name: Check out the decision script
-        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) }}
+        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) && job.workflow_sha != '' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: boonty-io/.github
-          ref: ${{ job.workflow_sha || inputs.shared_ref }}
+          ref: ${{ job.workflow_sha }}
           path: shared
           sparse-checkout: |
             scripts/gates-verify.sh
@@ -327,7 +326,7 @@ jobs:
       # PR head, on every run, and only `success` passes there
       # (scripts/gates-verify-post.sh; see the header).
       - name: Post gates/verified
-        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) }}
+        if: ${{ !cancelled() && (github.event_name == 'merge_group' || (steps.pr.outputs.skip == 'false' && steps.pr.outputs.head != '')) && job.workflow_sha != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}

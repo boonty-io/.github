@@ -52,6 +52,12 @@ jobs:
       issues: write        # labels on the PR, and creating a missing pr:* label
       pull-requests: write # the live PR read, and adding or removing a label on a PR (issues: write alone gets HTTP 403)
     steps:
+      - name: Fail when this workflow cannot see its own commit
+        if: job.workflow_sha == ''
+        run: |
+          echo "::error::job.workflow_sha is empty, so this workflow cannot check out its own commit of boonty-io/.github"
+          exit 1
+
       - name: Check out the scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
